@@ -47,37 +47,14 @@ jobs:
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Deploy Cloud Run service
-        id: deploy
+        id: deploy-cloud-run
         uses: google-github-actions/deploy-cloudrun@v3
         with:
           project_id: ${{ vars.GCP_PROJECT_ID }}
           service: ${{ vars.CLOUD_RUN_SERVICE }}
           region: ${{ vars.CLOUD_RUN_REGION }}
           source: .
-          env_vars_update_strategy: merge
-          env_vars: |-
-            NODE_ENV=production
-            TIME_ZONE=Asia/Taipei
-            APP_BASE_URL=${{ vars.APP_BASE_URL }}
-            ALLOW_UNSIGNED_WEBHOOKS=false
-            GOOGLE_SHEETS_SHEET_NAME=Records
-            GEMINI_MODEL=gemini-2.5-flash
-            GEMINI_TEXT_ANALYSIS_ENABLED=true
-            GEMINI_DAILY_LIMIT=50
-            PUBLIC_RECENT_LIMIT=10
-            ADMIN_PAGE_SIZE=100
-            GOOGLE_SHEETS_SPREADSHEET_ID=${{ vars.GOOGLE_SHEETS_SPREADSHEET_ID }}
-            GOOGLE_DRIVE_FOLDER_ID=${{ vars.GOOGLE_DRIVE_FOLDER_ID }}
-          secrets_update_strategy: merge
-          secrets: |-
-            DASHBOARD_PASSWORD=line-bot-dashboard-password:latest
-            SESSION_SECRET=line-bot-session-secret:latest
-            LINE_CHANNEL_SECRET=line-channel-secret:latest
-            LINE_CHANNEL_ACCESS_TOKEN=line-channel-access-token:latest
-            USER_HASH_SALT=line-bot-user-hash-salt:latest
-            GOOGLE_SERVICE_ACCOUNT_JSON=line-bot-google-service-account-json:latest
-            GEMINI_API_KEY=gemini-api-key:latest
           flags: '--allow-unauthenticated --min-instances=0 --max-instances=3'
 
       - name: Show service URL
-        run: echo "Cloud Run URL: ${{ steps.deploy.outputs.url }}"
+        run: echo "Cloud Run URL: ${{ steps.deploy-cloud-run.outputs.url }}"

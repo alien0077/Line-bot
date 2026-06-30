@@ -93,8 +93,6 @@ npm run sample:webhook
 | `GCP_PROJECT_ID` | `my-line-bot-project` | Google Cloud project id |
 | `CLOUD_RUN_SERVICE` | `line-bot` | Cloud Run service 名稱 |
 | `CLOUD_RUN_REGION` | `asia-east1` | Cloud Run region，台灣附近建議 `asia-east1` |
-| `GOOGLE_SHEETS_SPREADSHEET_ID` | `1abc...` | 紀錄用 Google Sheet id |
-| `GOOGLE_DRIVE_FOLDER_ID` | `1xyz...` | 媒體資料夾 id |
 | `APP_BASE_URL` | `https://...run.app` | 第一次部署後再填 Cloud Run URL；LINE Webhook 會用這個 URL 加 `/webhook/line` |
 
 ### GitHub repo secrets
@@ -106,7 +104,7 @@ npm run sample:webhook
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | Workload Identity Provider 完整 resource name |
 | `GCP_SERVICE_ACCOUNT` | GitHub Actions 用的 deploy service account email |
 
-其他應用程式密碼不要放 GitHub Secrets；請放 Google Secret Manager，workflow 會部署時掛到 Cloud Run：
+應用程式密碼不要放 GitHub repo；請放 Google Secret Manager，再在 Cloud Run 服務上掛成環境變數：
 
 | Secret Manager 名稱 | 對應環境變數 |
 | --- | --- |
