@@ -5,6 +5,7 @@ const summaryEls = {
   storageMode: document.querySelector('#storageMode'),
   analysisMode: document.querySelector('#analysisMode'),
   summaryList: document.querySelector('#summaryList'),
+  groupCounts: document.querySelector('#groupCounts'),
   typeCounts: document.querySelector('#typeCounts'),
   categoryCounts: document.querySelector('#categoryCounts'),
   recentList: document.querySelector('#recentList')
@@ -16,6 +17,7 @@ const adminEls = {
   message: document.querySelector('#adminMessage'),
   tools: document.querySelector('#adminTools'),
   search: document.querySelector('#searchInput'),
+  group: document.querySelector('#groupFilter'),
   type: document.querySelector('#typeFilter'),
   load: document.querySelector('#loadRecordsBtn'),
   table: document.querySelector('#recordsTable'),
@@ -30,14 +32,10 @@ function formatTime(value) {
   }).format(new Date(value));
 }
 
-function text(value) {
-  return value || '沒有資料';
-}
-
 function renderChips(container, counts) {
   const entries = Object.entries(counts || {});
   container.innerHTML = entries.length
-    ? entries.map(([key, count]) => `<span class="chip">${key} ${count}</span>`).join('')
+    ? entries.map(([key, count]) => `<span class="chip" title="${escapeHtml(key)}">${escapeHtml(key)} ${count}</span>`).join('')
     : '<span class="muted">尚無統計</span>';
 }
 
@@ -55,6 +53,7 @@ async function loadSummary() {
     ? summary.summaries.map((item) => `<li>${escapeHtml(item)}</li>`).join('')
     : '<li>尚無摘要，等群組開始傳訊息後會出現在這裡。</li>';
 
+  renderChips(summaryEls.groupCounts, summary.groupCounts);
   renderChips(summaryEls.typeCounts, summary.typeCounts);
   renderChips(summaryEls.categoryCounts, summary.categoryCounts);
 
@@ -63,7 +62,7 @@ async function loadSummary() {
         .map(
           (item) => `
             <article class="recent-item">
-              <div class="recent-meta">${formatTime(item.timestamp)} · ${escapeHtml(item.messageType)} · ${escapeHtml(item.category)}</div>
+              <div class="recent-meta">${formatTime(item.timestamp)} · ${escapeHtml(item.groupName)} · ${escapeHtml(item.messageType)} · ${escapeHtml(item.category)}</div>
               <strong>${escapeHtml(item.aiSummary || item.driveFileName || '未摘要')}</strong>
               <span>${escapeHtml(item.content || item.driveFileName || '非文字訊息')}</span>
             </article>
@@ -99,9 +98,22 @@ async function login(event) {
   await loadRecords();
 }
 
+function renderGroupOptions(groups, selectedGroupId) {
+  const options = ['<option value="">全部群組</option>'];
+  for (const group of groups || []) {
+    const selected = group.groupId === selectedGroupId ? ' selected' : '';
+    options.push(
+      `<option value="${escapeHtml(group.groupId)}"${selected}>${escapeHtml(group.groupName)} (${group.count})</option>`
+    );
+  }
+  adminEls.group.innerHTML = options.join('');
+}
+
 async function loadRecords() {
   const params = new URLSearchParams();
+  const selectedGroupId = adminEls.group.value;
   if (adminEls.search.value) params.set('search', adminEls.search.value);
+  if (selectedGroupId) params.set('groupId', selectedGroupId);
   if (adminEls.type.value) params.set('type', adminEls.type.value);
   const response = await fetch(`/api/admin/records?${params.toString()}`);
   if (!response.ok) {
@@ -109,6 +121,7 @@ async function loadRecords() {
     return;
   }
   const payload = await response.json();
+  renderGroupOptions(payload.groups, selectedGroupId);
   adminEls.message.textContent = `共 ${payload.count} 筆符合條件的紀錄。`;
   adminEls.tbody.innerHTML = payload.records.map(renderRecordRow).join('');
 }
@@ -117,6 +130,7 @@ function renderRecordRow(record) {
   return `
     <tr>
       <td>${formatTime(record.timestamp)}</td>
+      <td><strong>${escapeHtml(record.groupName)}</strong><br /><span class="muted small-text">${escapeHtml(record.groupId)}</span></td>
       <td>${escapeHtml(record.messageType)}</td>
       <td>${escapeHtml(record.category)}</td>
       <td>${escapeHtml(record.content)}</td>
@@ -137,6 +151,8 @@ function renderMedia(record) {
 document.querySelector('#refreshBtn').addEventListener('click', loadSummary);
 adminEls.loginForm.addEventListener('submit', login);
 adminEls.load.addEventListener('click', loadRecords);
+adminEls.group.addEventListener('change', loadRecords);
+adminEls.type.addEventListener('change', loadRecords);
 
 loadSummary().catch((error) => {
   console.error(error);

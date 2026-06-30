@@ -25,13 +25,24 @@ export interface ArchiveRecord {
   aiSummary: string;
 }
 
+export interface ArchiveRecordView extends ArchiveRecord {
+  groupName: string;
+}
+
+export interface GroupOption {
+  groupId: string;
+  groupName: string;
+  count: number;
+}
+
 export interface PublicSummary {
   generatedAt: string;
   todayCount: number;
   weekCount: number;
   typeCounts: Record<string, number>;
   categoryCounts: Record<string, number>;
-  recent: Array<Pick<ArchiveRecord, 'timestamp' | 'messageType' | 'category' | 'content' | 'aiSummary' | 'driveFileName'>>;
+  groupCounts: Record<string, number>;
+  recent: Array<Pick<ArchiveRecordView, 'timestamp' | 'groupId' | 'groupName' | 'messageType' | 'category' | 'content' | 'aiSummary' | 'driveFileName'>>;
   summaries: string[];
   storageMode: 'sheets' | 'memory';
   analysisMode: 'gemini' | 'local';

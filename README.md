@@ -5,8 +5,9 @@
 ## 可以怎麼用
 
 - 群組知識歸檔：把 LINE 群組裡的重要討論、圖片、檔案整理到 Sheets/Drive。
+- 多群組紀錄：同一個 bot 可加入多個群組，系統用 `groupId` 分辨來源。
 - 公開進度頁：公開頁只顯示摘要、統計、近期項目，適合給不在群組內的人看概況。
-- 管理查詢頁：輸入管理密碼後，可搜尋完整原文、分類、摘要，並透過後端代理預覽私有 Drive 媒體。
+- 管理查詢頁：輸入管理密碼後，可搜尋完整原文、群組、分類、摘要，並透過後端代理預覽私有 Drive 媒體。
 
 沒有 Google、LINE、Gemini 憑證時，專案會使用本機記憶體 demo 資料，方便先看畫面與 API。
 
@@ -54,8 +55,34 @@ npm run sample:webhook
 5. 設定環境變數：
    - `GOOGLE_SHEETS_SPREADSHEET_ID`
    - `GOOGLE_SHEETS_SHEET_NAME=Records`
+   - `GOOGLE_GROUPS_SHEET_NAME=Groups`
    - `GOOGLE_DRIVE_FOLDER_ID`
    - `GOOGLE_SERVICE_ACCOUNT_JSON`，可放原始 JSON 或 base64 後的 JSON。
+
+### 多群組與媒體分群
+
+每筆 LINE 訊息都會保存 `groupId`。如果 bot 加進很多群組，Dashboard 與 Sheets 會用 `groupId` 區分來源。
+
+系統會自動建立 `Groups` 分頁，表頭為：
+
+| groupId | displayName | notes | updatedAt |
+| --- | --- | --- | --- |
+
+你可以手動把 `groupId` 對應到容易閱讀的群組名稱，例如：
+
+| groupId | displayName | notes | updatedAt |
+| --- | --- | --- | --- |
+| Cxxxxxxxxxxxxxxxx | 工作專案 A | 專案群 | 2026-06-30 |
+
+Dashboard 會用 `displayName` 顯示群組統計、最近項目與完整紀錄，也可依群組篩選。
+
+圖片與檔案會存進 `GOOGLE_DRIVE_FOLDER_ID` 指定的 Drive 資料夾，並依下列結構分群：
+
+```text
+日期資料夾 / groupId / messageId-原始檔名
+```
+
+Drive 資料夾保留穩定的 `groupId`，避免你之後更改群組顯示名稱時影響既有檔案路徑。
 
 ### 4. Gemini API
 
@@ -75,8 +102,11 @@ npm run sample:webhook
 | `LINE_CHANNEL_SECRET` | LINE Webhook 簽章驗證 |
 | `LINE_CHANNEL_ACCESS_TOKEN` | 下載 LINE 圖片/檔案內容 |
 | `GOOGLE_SHEETS_SPREADSHEET_ID` | 寫入與讀取紀錄的 spreadsheet id |
+| `GOOGLE_SHEETS_SHEET_NAME` | 紀錄分頁名稱，預設 `Records` |
+| `GOOGLE_GROUPS_SHEET_NAME` | 群組別名分頁名稱，預設 `Groups` |
 | `GOOGLE_DRIVE_FOLDER_ID` | 儲存媒體的 Drive folder id |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | service account JSON 或 base64 JSON |
+| `USER_HASH_SALT` | LINE userId 匿名化雜湊用 salt |
 | `GEMINI_API_KEY` | Gemini API key |
 | `GEMINI_DAILY_LIMIT` | 每個服務實例每日 Gemini 文字分析上限 |
 
@@ -90,10 +120,12 @@ npm run sample:webhook
 
 | 名稱 | 範例 | 說明 |
 | --- | --- | --- |
-| `GCP_PROJECT_ID` | `my-line-bot-project` | Google Cloud project id |
-| `CLOUD_RUN_SERVICE` | `line-bot` | Cloud Run service 名稱 |
-| `CLOUD_RUN_REGION` | `asia-east1` | Cloud Run region，台灣附近建議 `asia-east1` |
-| `APP_BASE_URL` | `https://...run.app` | 第一次部署後再填 Cloud Run URL；LINE Webhook 會用這個 URL 加 `/webhook/line` |
+| `GCP_PROJECT_ID` | `line-bot-backup-501005` | Google Cloud project id |
+| `CLOUD_RUN_SERVICE` | `line-bot-backup` | Cloud Run service 名稱 |
+| `CLOUD_RUN_REGION` | `asia-east1` | Cloud Run region |
+| `APP_BASE_URL` | `https://...run.app` | Cloud Run URL；LINE Webhook 會用這個 URL 加 `/webhook/line` |
+| `GOOGLE_SHEETS_SPREADSHEET_ID` | `1abc...` | Google Sheets URL 裡 `/d/` 和 `/edit` 中間的 ID |
+| `GOOGLE_DRIVE_FOLDER_ID` | `1abc...` | Google Drive folder URL 裡 `/folders/` 後面的 ID |
 
 ### GitHub repo secrets
 
@@ -104,48 +136,32 @@ npm run sample:webhook
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | Workload Identity Provider 完整 resource name |
 | `GCP_SERVICE_ACCOUNT` | GitHub Actions 用的 deploy service account email |
 
-應用程式密碼不要放 GitHub repo；請放 Google Secret Manager，再在 Cloud Run 服務上掛成環境變數：
+應用程式密碼不要放 GitHub repo；請放 Google Secret Manager，再由 Cloud Run 掛成環境變數。
 
-| Secret Manager 名稱 | 對應環境變數 |
+## Google Secret Manager
+
+目前 workflow 會掛入下列 Secret Manager secrets，名稱需與環境變數相同：
+
+| Secret 名稱 | 用途 |
 | --- | --- |
-| `line-bot-dashboard-password` | `DASHBOARD_PASSWORD` |
-| `line-bot-session-secret` | `SESSION_SECRET` |
-| `line-channel-secret` | `LINE_CHANNEL_SECRET` |
-| `line-channel-access-token` | `LINE_CHANNEL_ACCESS_TOKEN` |
-| `line-bot-user-hash-salt` | `USER_HASH_SALT` |
-| `line-bot-google-service-account-json` | `GOOGLE_SERVICE_ACCOUNT_JSON` |
-| `gemini-api-key` | `GEMINI_API_KEY` |
+| `DASHBOARD_PASSWORD` | 管理頁登入密碼 |
+| `SESSION_SECRET` | 簽署登入 cookie |
+| `USER_HASH_SALT` | LINE userId 匿名化 |
+| `GEMINI_API_KEY` | Gemini API key |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Google service account JSON |
+| `LINE_CHANNEL_SECRET` | LINE Webhook 簽章驗證 |
+| `LINE_CHANNEL_ACCESS_TOKEN` | 下載 LINE 圖片/檔案內容 |
 
-第一次部署完成後，把 Cloud Run URL 填回 GitHub variable `APP_BASE_URL`，並到 LINE Developers 設定 Webhook URL：
-
-```text
-https://你的-cloud-run-url/webhook/line
-```
-
-## 手動部署到 Cloud Run
-
-先確認已安裝並登入 `gcloud`，且已選好 project。
-
-```bash
-npm run build
-gcloud run deploy line-group-archive-dashboard \
-  --source . \
-  --region asia-east1 \
-  --allow-unauthenticated \
-  --min-instances 0 \
-  --set-env-vars NODE_ENV=production,ALLOW_UNSIGNED_WEBHOOKS=false
-```
-
-敏感資料建議放 Secret Manager，再用 Cloud Run 的 secret env var 掛入，不要把 `.env` 或 service account JSON commit 到 git。
+程式讀的是 `GOOGLE_SERVICE_ACCOUNT_JSON`，不是 `GOOGLE_CREDENTIALS_JSON`。
 
 ## API
 
 - `POST /webhook/line`：LINE Webhook 入口，會驗證 `x-line-signature`。
-- `GET /api/public/summary`：公開摘要、統計、近期項目。
+- `GET /api/public/summary`：公開摘要、群組統計、類型統計、分類統計、近期項目。
 - `POST /api/admin/login`：用 `DASHBOARD_PASSWORD` 登入。
-- `GET /api/admin/records`：登入後查完整紀錄，支援 `search`、`type`、`limit` query。
+- `GET /api/admin/records`：登入後查完整紀錄，支援 `search`、`groupId`、`type`、`limit` query。
 - `GET /api/admin/media/:fileId`：登入後由後端代理讀取私有 Drive 媒體。
-- `GET /healthz`：健康檢查。
+- `GET /healthz/`：健康檢查。
 
 ## 測試
 

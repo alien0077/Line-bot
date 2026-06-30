@@ -13,6 +13,7 @@ const envSchema = z.object({
   ALLOW_UNSIGNED_WEBHOOKS: z.coerce.boolean().default(true),
   GOOGLE_SHEETS_SPREADSHEET_ID: z.string().default(''),
   GOOGLE_SHEETS_SHEET_NAME: z.string().default('Records'),
+  GOOGLE_GROUPS_SHEET_NAME: z.string().default('Groups'),
   GOOGLE_DRIVE_FOLDER_ID: z.string().default(''),
   GOOGLE_SERVICE_ACCOUNT_JSON: z.string().default(''),
   GOOGLE_APPLICATION_CREDENTIALS: z.string().default(''),

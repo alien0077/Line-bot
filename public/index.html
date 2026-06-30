@@ -42,7 +42,11 @@
         <ul id="summaryList" class="summary-list"></ul>
       </section>
 
-      <section class="split">
+      <section class="split three-up">
+        <div class="panel">
+          <h2>群組統計</h2>
+          <div id="groupCounts" class="chips"></div>
+        </div>
         <div class="panel">
           <h2>類型統計</h2>
           <div id="typeCounts" class="chips"></div>
@@ -69,6 +73,9 @@
 
         <div id="adminTools" class="admin-tools hidden">
           <input id="searchInput" type="search" placeholder="搜尋文字、摘要、分類、群組" />
+          <select id="groupFilter">
+            <option value="">全部群組</option>
+          </select>
           <select id="typeFilter">
             <option value="">全部類型</option>
             <option value="text">文字</option>
@@ -88,6 +95,7 @@
             <thead>
               <tr>
                 <th>時間</th>
+                <th>群組</th>
                 <th>類型</th>
                 <th>分類</th>
                 <th>內容</th>

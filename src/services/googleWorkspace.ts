@@ -25,6 +25,8 @@ const header = [
   'aiSummary'
 ];
 
+const groupHeader = ['groupId', 'displayName', 'notes', 'updatedAt'];
+
 let sheetsClient: sheets_v4.Sheets | null = null;
 let driveClient: drive_v3.Drive | null = null;
 
@@ -81,14 +83,13 @@ function recordFromRow(row: unknown[]): ArchiveRecord {
   };
 }
 
-async function ensureSheetHeader(): Promise<void> {
-  if (!hasGoogleWorkspaceConfig()) return;
+async function ensureWorksheet(title: string): Promise<sheets_v4.Sheets> {
   const sheets = await getSheets();
   const spreadsheet = await sheets.spreadsheets.get({
     spreadsheetId: config.GOOGLE_SHEETS_SPREADSHEET_ID,
     fields: 'sheets.properties.title'
   });
-  const exists = spreadsheet.data.sheets?.some((sheet) => sheet.properties?.title === config.GOOGLE_SHEETS_SHEET_NAME);
+  const exists = spreadsheet.data.sheets?.some((sheet) => sheet.properties?.title === title);
   if (!exists) {
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId: config.GOOGLE_SHEETS_SPREADSHEET_ID,
@@ -96,23 +97,35 @@ async function ensureSheetHeader(): Promise<void> {
         requests: [
           {
             addSheet: {
-              properties: {
-                title: config.GOOGLE_SHEETS_SHEET_NAME
-              }
+              properties: { title }
             }
           }
         ]
       }
     });
   }
+  return sheets;
+}
+
+async function writeHeader(title: string, lastColumn: string, values: string[]): Promise<void> {
+  if (!hasGoogleWorkspaceConfig()) return;
+  const sheets = await ensureWorksheet(title);
   await sheets.spreadsheets.values.update({
     spreadsheetId: config.GOOGLE_SHEETS_SPREADSHEET_ID,
-    range: `${config.GOOGLE_SHEETS_SHEET_NAME}!A1:M1`,
+    range: `${title}!A1:${lastColumn}1`,
     valueInputOption: 'RAW',
     requestBody: {
-      values: [header]
+      values: [values]
     }
   });
+}
+
+async function ensureSheetHeader(): Promise<void> {
+  await writeHeader(config.GOOGLE_SHEETS_SHEET_NAME, 'M', header);
+}
+
+async function ensureGroupsHeader(): Promise<void> {
+  await writeHeader(config.GOOGLE_GROUPS_SHEET_NAME, 'D', groupHeader);
 }
 
 export async function appendSheetRecord(record: ArchiveRecord): Promise<void> {
@@ -137,6 +150,23 @@ export async function readSheetRecords(): Promise<ArchiveRecord[]> {
     range: `${config.GOOGLE_SHEETS_SHEET_NAME}!A2:M10000`
   });
   return (response.data.values ?? []).map(recordFromRow).filter((record) => record.id);
+}
+
+export async function readGroupAliases(): Promise<Record<string, string>> {
+  if (!hasGoogleWorkspaceConfig()) return {};
+  await ensureGroupsHeader();
+  const sheets = await getSheets();
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: config.GOOGLE_SHEETS_SPREADSHEET_ID,
+    range: `${config.GOOGLE_GROUPS_SHEET_NAME}!A2:D1000`
+  });
+  const aliases: Record<string, string> = {};
+  for (const row of response.data.values ?? []) {
+    const groupId = String(row[0] ?? '').trim();
+    const displayName = String(row[1] ?? '').trim();
+    if (groupId && displayName) aliases[groupId] = displayName;
+  }
+  return aliases;
 }
 
 async function findFolder(name: string, parentId: string): Promise<string | null> {

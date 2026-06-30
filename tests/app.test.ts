@@ -15,6 +15,7 @@ describe('dashboard API', () => {
     const response = await request(app).get('/api/public/summary').expect(200);
     expect(response.body.todayCount).toBeGreaterThanOrEqual(1);
     expect(response.body.storageMode).toBe('memory');
+    expect(response.body.groupCounts['示範群組']).toBeGreaterThanOrEqual(1);
   });
 
   it('protects admin records with a password', async () => {
@@ -28,5 +29,7 @@ describe('dashboard API', () => {
     const cookie = login.headers['set-cookie'];
     const records = await request(app).get('/api/admin/records').set('Cookie', cookie).expect(200);
     expect(records.body.records.length).toBeGreaterThanOrEqual(1);
+    expect(records.body.groups[0].groupName).toBe('示範群組');
+    expect(records.body.records[0].groupName).toBe('示範群組');
   });
 });

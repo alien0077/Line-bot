@@ -167,14 +167,18 @@ line-bot-collector@line-bot-backup-501005.iam.gserviceaccount.com
 Google Sheets：
 
 - Spreadsheet ID 由 `GOOGLE_SHEETS_SPREADSHEET_ID` 提供
-- 預設 sheet name：`Records`
-- 程式會自動確認 `Records` 分頁存在，並寫入表頭
-- 資料欄位包含時間、來源、群組 ID、使用者 hash、訊息類型、內容、分類、Drive fileId、Gemini 摘要等
+- 預設紀錄分頁名稱是 Records
+- 預設群組別名分頁名稱是 Groups，可用 GOOGLE_GROUPS_SHEET_NAME 調整
+- 程式會自動確認 Records 與 Groups 分頁存在，並寫入表頭
+- Records 資料欄位包含時間、來源、群組 ID、使用者 hash、訊息類型、內容、分類、Drive fileId、Gemini 摘要等
+- Groups 分頁欄位是 groupId、displayName、notes、updatedAt；手動填 displayName 後，Dashboard 會顯示好讀的群組名稱並支援群組篩選
 
 Google Drive：
 
 - Folder ID 由 `GOOGLE_DRIVE_FOLDER_ID` 提供
 - 圖片/檔案會建立日期與群組資料夾後上傳
+- 實際路徑是：日期資料夾 / groupId / messageId-原始檔名
+- Drive 資料夾仍使用穩定的 groupId，不使用 displayName，避免日後改群組名稱時影響舊檔案路徑
 - Drive 檔案不需要公開分享
 - 管理頁媒體預覽由後端驗證登入後代理讀取
 

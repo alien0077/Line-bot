@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { config } from '../config.js';
 import { login, requireAdmin, setSessionCookie } from '../services/auth.js';
-import { buildPublicSummary, listRecords, storageMode } from '../services/store.js';
+import { buildGroupOptions, buildPublicSummary, listRecordViews, storageMode } from '../services/store.js';
 import { getDriveMedia } from '../services/googleWorkspace.js';
 import { HttpError } from '../utils/httpError.js';
 
@@ -21,22 +21,25 @@ apiRouter.post('/admin/login', (req, res) => {
 apiRouter.get('/admin/records', requireAdmin, async (req, res) => {
   const search = String(req.query.search ?? '').trim().toLowerCase();
   const type = String(req.query.type ?? '').trim();
+  const groupId = String(req.query.groupId ?? '').trim();
   const pageSize = Math.min(Number(req.query.limit ?? config.ADMIN_PAGE_SIZE), 500);
-  const records = await listRecords();
+  const records = await listRecordViews();
   const filtered = records.filter((record) => {
     const typeMatch = !type || record.messageType === type;
+    const groupMatch = !groupId || record.groupId === groupId;
     const searchMatch =
       !search ||
-      [record.content, record.aiSummary, record.category, record.driveFileName, record.groupId]
+      [record.content, record.aiSummary, record.category, record.driveFileName, record.groupId, record.groupName]
         .join(' ')
         .toLowerCase()
         .includes(search);
-    return typeMatch && searchMatch;
+    return typeMatch && groupMatch && searchMatch;
   });
 
   res.json({
     storageMode: storageMode(),
     count: filtered.length,
+    groups: buildGroupOptions(records),
     records: filtered.slice(0, pageSize).map((record) => ({
       ...record,
       mediaProxyUrl: record.driveFileId ? `/api/admin/media/${encodeURIComponent(record.driveFileId)}` : ''
