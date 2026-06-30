@@ -1,0 +1,39 @@
+{
+  "name": "line-group-archive-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc && node scripts/copy-public.mjs",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "sample:webhook": "tsx scripts/send-sample-webhook.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^1.10.0",
+    "cookie": "^1.0.2",
+    "dotenv": "^17.0.1",
+    "express": "^5.1.0",
+    "googleapis": "^173.0.0",
+    "mime-types": "^2.1.35",
+    "nanoid": "^5.0.7",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/cookie": "^0.6.0",
+    "@types/express": "^5.0.3",
+    "@types/mime-types": "^2.1.4",
+    "@types/node": "^22.10.7",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.9"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

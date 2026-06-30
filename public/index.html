@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LINE 群組歸檔儀表板</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">LINE Archive</p>
+        <h1>群組訊息歸檔儀表板</h1>
+      </div>
+      <div class="status">
+        <span id="storageMode">storage</span>
+        <span id="analysisMode">analysis</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="summary-grid" aria-label="公開摘要">
+        <article>
+          <span>今日訊息</span>
+          <strong id="todayCount">0</strong>
+        </article>
+        <article>
+          <span>近 7 天</span>
+          <strong id="weekCount">0</strong>
+        </article>
+        <article>
+          <span>最後更新</span>
+          <strong id="generatedAt">--</strong>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>AI 摘要</h2>
+          <button id="refreshBtn" type="button">重新整理</button>
+        </div>
+        <ul id="summaryList" class="summary-list"></ul>
+      </section>
+
+      <section class="split">
+        <div class="panel">
+          <h2>類型統計</h2>
+          <div id="typeCounts" class="chips"></div>
+        </div>
+        <div class="panel">
+          <h2>分類統計</h2>
+          <div id="categoryCounts" class="chips"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>最近公開項目</h2>
+        <div id="recentList" class="recent-list"></div>
+      </section>
+
+      <section class="panel admin-panel">
+        <div class="panel-head">
+          <h2>完整紀錄</h2>
+          <form id="loginForm" class="login-form">
+            <input id="password" name="password" type="password" placeholder="管理密碼" autocomplete="current-password" />
+            <button type="submit">登入</button>
+          </form>
+        </div>
+
+        <div id="adminTools" class="admin-tools hidden">
+          <input id="searchInput" type="search" placeholder="搜尋文字、摘要、分類、群組" />
+          <select id="typeFilter">
+            <option value="">全部類型</option>
+            <option value="text">文字</option>
+            <option value="image">圖片</option>
+            <option value="file">檔案</option>
+            <option value="video">影片</option>
+            <option value="audio">音訊</option>
+            <option value="sticker">貼圖</option>
+            <option value="other">其他</option>
+          </select>
+          <button id="loadRecordsBtn" type="button">查詢</button>
+        </div>
+
+        <p id="adminMessage" class="muted">輸入密碼後可查看完整原文與媒體預覽。</p>
+        <div class="table-wrap">
+          <table id="recordsTable" class="records-table hidden">
+            <thead>
+              <tr>
+                <th>時間</th>
+                <th>類型</th>
+                <th>分類</th>
+                <th>內容</th>
+                <th>摘要</th>
+                <th>媒體</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

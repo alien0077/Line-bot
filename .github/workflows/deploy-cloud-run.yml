@@ -1,0 +1,92 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: cloud-run-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Test and deploy
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      NODE_ENV: production
+      CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+      CLOUD_RUN_REGION: ${{ vars.CLOUD_RUN_REGION }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Deploy Cloud Run service
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          service: ${{ vars.CLOUD_RUN_SERVICE }}
+          region: ${{ vars.CLOUD_RUN_REGION }}
+          source: .
+          env_vars_update_strategy: merge
+          env_vars: |-
+            NODE_ENV=production
+            TIME_ZONE=Asia/Taipei
+            APP_BASE_URL=${{ vars.APP_BASE_URL }}
+            ALLOW_UNSIGNED_WEBHOOKS=false
+            GOOGLE_SHEETS_SHEET_NAME=Records
+            GEMINI_MODEL=gemini-2.5-flash
+            GEMINI_TEXT_ANALYSIS_ENABLED=true
+            GEMINI_DAILY_LIMIT=50
+            PUBLIC_RECENT_LIMIT=10
+            ADMIN_PAGE_SIZE=100
+            GOOGLE_SHEETS_SPREADSHEET_ID=${{ vars.GOOGLE_SHEETS_SPREADSHEET_ID }}
+            GOOGLE_DRIVE_FOLDER_ID=${{ vars.GOOGLE_DRIVE_FOLDER_ID }}
+          secrets_update_strategy: merge
+          secrets: |-
+            DASHBOARD_PASSWORD=line-bot-dashboard-password:latest
+            SESSION_SECRET=line-bot-session-secret:latest
+            LINE_CHANNEL_SECRET=line-channel-secret:latest
+            LINE_CHANNEL_ACCESS_TOKEN=line-channel-access-token:latest
+            USER_HASH_SALT=line-bot-user-hash-salt:latest
+            GOOGLE_SERVICE_ACCOUNT_JSON=line-bot-google-service-account-json:latest
+            GEMINI_API_KEY=gemini-api-key:latest
+          flags: >-
+            --allow-unauthenticated
+            --min-instances=0
+            --max-instances=3
+
+      - name: Show service URL
+        run: echo "Cloud Run URL: ${{ steps.deploy.outputs.url }}"

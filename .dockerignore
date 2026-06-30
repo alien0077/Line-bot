@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.env
+.env.*
+coverage
+logs
+service-account*.json
+credentials*.json
