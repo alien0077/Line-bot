@@ -130,10 +130,11 @@ export async function appendSheetRecord(record: ArchiveRecord): Promise<void> {
 }
 
 export async function readSheetRecords(): Promise<ArchiveRecord[]> {
+  await ensureSheetHeader();
   const sheets = await getSheets();
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: config.GOOGLE_SHEETS_SPREADSHEET_ID,
-    range: `${config.GOOGLE_SHEETS_SHEET_NAME}!A2:M`
+    range: `${config.GOOGLE_SHEETS_SHEET_NAME}!A2:M10000`
   });
   return (response.data.values ?? []).map(recordFromRow).filter((record) => record.id);
 }
