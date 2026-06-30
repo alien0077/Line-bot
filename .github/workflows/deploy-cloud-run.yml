@@ -47,7 +47,7 @@ jobs:
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Deploy Cloud Run service
-        id: deploy-cloud-run
+        id: deploy_cloud_run
         uses: google-github-actions/deploy-cloudrun@v3
         with:
           project_id: ${{ vars.GCP_PROJECT_ID }}
@@ -57,4 +57,4 @@ jobs:
           flags: '--allow-unauthenticated --min-instances=0 --max-instances=3'
 
       - name: Show service URL
-        run: echo "Cloud Run URL: ${{ steps.deploy-cloud-run.outputs.url }}"
+        run: echo "Cloud Run URL: ${{ steps.deploy_cloud_run.outputs.url }}"
