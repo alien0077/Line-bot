@@ -38,7 +38,7 @@ const envSchema = z.object({
   OPENROUTER_MODEL: z.string().default('openrouter/auto'),
   OPENROUTER_WEB_SEARCH_ENABLED: envBoolean.default(true),
   NVIDIA_API_KEY: z.string().default(''),
-  NVIDIA_MODEL: z.string().default('nvidia/llama-3.1-nemotron-nano-8b-v1'),
+  NVIDIA_MODEL: z.string().default('meta/llama-3.3-70b-instruct'),
   LINE_BOT_QA_ENABLED: envBoolean.default(true),
   LINE_BOT_QA_CONTEXT_LIMIT: z.coerce.number().default(30),
   PUBLIC_RECENT_LIMIT: z.coerce.number().default(10),
