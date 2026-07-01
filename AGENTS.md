@@ -215,7 +215,8 @@ Cloud Run 必須允許未驗證外部請求，因為 LINE 會直接呼叫 webhoo
 - 預設模型由 `GEMINI_MODEL` 控制，目前 `.env.example` 是 `gemini-2.5-flash`
 - `GEMINI_DAILY_LIMIT` 控制每個服務實例每日文字分析上限
 - 若要節省額度，可設 `GEMINI_TEXT_ANALYSIS_ENABLED=false`，程式會退回本機規則摘要與分類
-- @bot 問答可用 `AI_PROVIDER=gemini` 與 `AI_FALLBACK_PROVIDERS=openrouter,nvidia`，在 Gemini 額度或暫時錯誤時改走 OpenRouter/NVIDIA。
+- 正式歸檔預設 `ARCHIVE_AI_MODE=local`：一般訊息分類、摘要、討論串都用本機規則；只有 @bot 問答走 AI provider。若日後要測 AI 歸檔，可改 `mentions` 或 `all`。
+- @bot 問答預設 `AI_PROVIDER=openrouter` 與 `AI_FALLBACK_PROVIDERS=gemini,nvidia`，OpenRouter 額度或暫時錯誤時才改走 Gemini，最後 NVIDIA。
 
 ## 部署流程
 

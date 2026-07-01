@@ -129,4 +129,24 @@ describe('Gemini group QA routing', () => {
       plugins: [{ id: 'web' }]
     });
   });
+
+  it('uses smarter local rules for archive analysis and topics', async () => {
+    const { analyzeText, classifyTopic } = await loadGemini();
+
+    const analysis = await analyzeText('請問貝貝南瓜怎麼烤？', '其他', { forceLocal: true });
+    const topic = await classifyTopic({
+      groupId: 'group-1',
+      messageType: 'text',
+      content: '請問貝貝南瓜怎麼烤？',
+      category: analysis.category,
+      driveFileName: '',
+      mimeType: '',
+      aiSummary: analysis.summary
+    }, { forceLocal: true });
+
+    expect(analysis.category).toBe('問題');
+    expect(topic.topicTitle).toContain('貝貝南瓜');
+    expect(topic.topicId).toContain('貝貝南瓜');
+    expect(topic.topicConfidence).toBeGreaterThan(0.35);
+  });
 });

@@ -23,9 +23,14 @@ const adminEls = {
   topic: document.querySelector('#topicFilter'),
   type: document.querySelector('#typeFilter'),
   load: document.querySelector('#loadRecordsBtn'),
+  threadList: document.querySelector('#recordsThreadList'),
   table: document.querySelector('#recordsTable'),
   tbody: document.querySelector('#recordsTable tbody')
 };
+
+const threadsPerPage = 25;
+let adminThreadPage = 1;
+let currentThreads = [];
 
 function formatTime(value) {
   if (!value) return '--';
@@ -121,7 +126,8 @@ async function login(event) {
 function setAdminAuthenticated(isAuthenticated) {
   adminEls.loginForm.classList.toggle('hidden', isAuthenticated);
   adminEls.tools.classList.toggle('hidden', !isAuthenticated);
-  adminEls.table.classList.toggle('hidden', !isAuthenticated);
+  adminEls.threadList.classList.toggle('hidden', !isAuthenticated);
+  adminEls.table.classList.add('hidden');
   if (isAuthenticated) adminEls.password.value = '';
 }
 
@@ -167,30 +173,115 @@ async function loadRecords(options = {}) {
   setAdminAuthenticated(true);
   renderGroupOptions(payload.groups, selectedGroupId);
   renderTopicOptions(payload.topics, selectedTopicId);
-  adminEls.message.textContent = `共 ${payload.count} 筆符合條件的紀錄。`;
-  adminEls.tbody.innerHTML = payload.records.map(renderRecordRow).join('');
+  currentThreads = groupRecordsByTopic(payload.records);
+  adminThreadPage = 1;
+  adminEls.message.textContent = `共 ${payload.count} 筆符合條件的紀錄，整理成 ${currentThreads.length} 個討論串。`;
+  renderThreadPage();
+  adminEls.tbody.innerHTML = '';
   return true;
 }
 
-function renderRecordRow(record) {
+function groupRecordsByTopic(records) {
+  const map = new Map();
+  for (const record of records || []) {
+    const key = record.topicId || `${record.groupId}-${record.category}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.records.push(record);
+      existing.count += 1;
+      if (Date.parse(record.timestamp) > Date.parse(existing.lastMessageAt)) existing.lastMessageAt = record.timestamp;
+    } else {
+      map.set(key, {
+        id: key,
+        topicTitle: record.topicTitle || '未分類主題',
+        topicSummary: record.topicSummary || record.aiSummary || record.content || record.driveFileName || '',
+        groupName: record.groupName,
+        groupId: record.groupId,
+        count: 1,
+        lastMessageAt: record.timestamp,
+        records: [record]
+      });
+    }
+  }
+  return [...map.values()]
+    .map((thread) => ({
+      ...thread,
+      records: thread.records.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
+    }))
+    .sort((a, b) => Date.parse(b.lastMessageAt) - Date.parse(a.lastMessageAt));
+}
+
+function renderThreadPage() {
+  if (!currentThreads.length) {
+    adminEls.threadList.innerHTML = '<p class="muted">沒有符合條件的紀錄。</p>';
+    return;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(currentThreads.length / threadsPerPage));
+  adminThreadPage = Math.min(Math.max(adminThreadPage, 1), totalPages);
+  const start = (adminThreadPage - 1) * threadsPerPage;
+  const pageThreads = currentThreads.slice(start, start + threadsPerPage);
+  const controls = renderThreadPagination(totalPages);
+  adminEls.threadList.innerHTML = [
+    controls,
+    ...pageThreads.map((thread) => renderRecordThread(thread, adminEls.topic.value || pageThreads.length === 1)),
+    controls
+  ].join('');
+}
+
+function renderThreadPagination(totalPages) {
+  if (totalPages <= 1) return '';
   return `
-    <tr>
-      <td data-label="時間">${formatTime(record.timestamp)}</td>
-      <td data-label="群組"><strong>${escapeHtml(record.groupName)}</strong><br /><span class="muted small-text">${escapeHtml(record.groupId)}</span></td>
-      <td data-label="主題"><strong>${escapeHtml(record.topicTitle || '未分類主題')}</strong><br /><span class="muted small-text">${escapeHtml(record.topicSummary || '')}</span></td>
-      <td data-label="類型">${escapeHtml(record.messageType)}</td>
-      <td data-label="分類">${escapeHtml(record.category)}</td>
-      <td data-label="內容">${escapeHtml(record.content || record.driveFileName || '非文字訊息')}</td>
-      <td data-label="摘要">${escapeHtml(record.aiSummary)}</td>
-      <td data-label="媒體">${renderMedia(record)}</td>
-    </tr>
+    <nav class="thread-pagination" aria-label="討論串分頁">
+      <button type="button" data-thread-page="${adminThreadPage - 1}"${adminThreadPage === 1 ? ' disabled' : ''}>上一頁</button>
+      <span>第 ${adminThreadPage} / ${totalPages} 頁 · 每頁 ${threadsPerPage} 個討論串</span>
+      <button type="button" data-thread-page="${adminThreadPage + 1}"${adminThreadPage === totalPages ? ' disabled' : ''}>下一頁</button>
+    </nav>
+  `;
+}
+
+function renderRecordThread(thread, open) {
+  return `
+    <details class="record-thread"${open ? ' open' : ''}>
+      <summary>
+        <span>
+          <strong>${escapeHtml(thread.topicTitle)}</strong>
+          <small>${formatTime(thread.lastMessageAt)} · ${escapeHtml(thread.groupName)}</small>
+        </span>
+        <span class="chip">${thread.count} 則</span>
+      </summary>
+      <p class="thread-summary">${escapeHtml(thread.topicSummary || '尚無主題摘要')}</p>
+      <div class="thread-records">
+        ${thread.records.map(renderRecordCard).join('')}
+      </div>
+    </details>
+  `;
+}
+
+function renderRecordCard(record) {
+  return `
+    <article class="record-card">
+      <div class="record-card-head">
+        <span>${formatTime(record.timestamp)}</span>
+        <span class="chip">${escapeHtml(record.messageType)}</span>
+        <span class="chip">${escapeHtml(record.category)}</span>
+      </div>
+      <p class="record-content">${escapeHtml(record.content || record.driveFileName || '非文字訊息')}</p>
+      ${record.aiSummary ? `<p class="record-summary">${escapeHtml(record.aiSummary)}</p>` : ''}
+      ${record.mediaProxyUrl ? `<div class="record-media">${renderMedia(record)}</div>` : ''}
+    </article>
   `;
 }
 
 function renderMedia(record) {
   if (!record.mediaProxyUrl) return escapeHtml(record.driveFileName || '');
   if (record.mimeType?.startsWith('image/')) {
-    return `<img class="media-preview" src="${record.mediaProxyUrl}" alt="${escapeHtml(record.driveFileName)}" loading="lazy" />`;
+    return `
+      <a class="media-link" href="${record.mediaProxyUrl}" target="_blank" rel="noreferrer">
+        <img class="media-preview" src="${record.mediaProxyUrl}" alt="${escapeHtml(record.driveFileName)}" loading="lazy" />
+        <span>開啟圖片</span>
+      </a>
+    `;
   }
   if (record.mimeType?.startsWith('video/')) {
     return `<video class="media-preview media-video" src="${record.mediaProxyUrl}" controls preload="metadata"></video>`;
@@ -207,6 +298,13 @@ adminEls.load.addEventListener('click', loadRecords);
 adminEls.group.addEventListener('change', loadRecords);
 adminEls.topic.addEventListener('change', loadRecords);
 adminEls.type.addEventListener('change', loadRecords);
+adminEls.threadList.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-thread-page]');
+  if (!button || button.hasAttribute('disabled')) return;
+  adminThreadPage = Number(button.dataset.threadPage);
+  renderThreadPage();
+  adminEls.threadList.scrollIntoView({ block: 'start' });
+});
 
 loadSummary().catch((error) => {
   console.error(error);

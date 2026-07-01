@@ -175,6 +175,6 @@ export async function buildPublicSummary(limit: number): Promise<PublicSummary> 
       .filter(Boolean)
       .slice(0, 5),
     storageMode: storageMode(),
-    analysisMode: config.GEMINI_API_KEY && config.GEMINI_TEXT_ANALYSIS_ENABLED ? 'gemini' : 'local'
+    analysisMode: config.ARCHIVE_AI_MODE !== 'local' && config.GEMINI_API_KEY && config.GEMINI_TEXT_ANALYSIS_ENABLED ? 'gemini' : 'local'
   };
 }

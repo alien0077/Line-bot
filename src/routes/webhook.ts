@@ -32,6 +32,12 @@ function shouldReplyToMention(event: LineWebhookEvent): boolean {
   return Boolean(config.LINE_BOT_QA_ENABLED && event.replyToken && isBotMentioned(event));
 }
 
+function shouldUseAiForArchive(event: LineWebhookEvent): boolean {
+  if (config.ARCHIVE_AI_MODE === 'all') return true;
+  if (config.ARCHIVE_AI_MODE === 'mentions') return isBotMentioned(event);
+  return false;
+}
+
 async function recordFromEvent(event: LineWebhookEvent): Promise<ArchiveRecord | null> {
   if (event.type !== 'message' || !event.message) return null;
 
@@ -41,8 +47,8 @@ async function recordFromEvent(event: LineWebhookEvent): Promise<ArchiveRecord |
   const text = getEventText(event);
   const media = await fetchLineContent(event);
   const drive = media ? await uploadMediaToDrive(groupId, messageId, media) : { fileId: '', fileName: '' };
-  const reserveGeminiForAnswer = shouldReplyToMention(event);
-  const analysis = await analyzeText(text, baseCategory(messageType), { forceLocal: reserveGeminiForAnswer });
+  const archiveUsesAi = shouldUseAiForArchive(event);
+  const analysis = await analyzeText(text, baseCategory(messageType), { forceLocal: !archiveUsesAi });
   const topic = await classifyTopic({
     groupId,
     messageType,
@@ -51,7 +57,7 @@ async function recordFromEvent(event: LineWebhookEvent): Promise<ArchiveRecord |
     driveFileName: drive.fileName,
     mimeType: media?.mimeType ?? '',
     aiSummary: analysis.summary
-  }, { forceLocal: reserveGeminiForAnswer });
+  }, { forceLocal: !archiveUsesAi });
 
   return {
     id: nanoid(),

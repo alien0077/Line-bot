@@ -47,7 +47,7 @@ function mentionEvent(overrides: Record<string, unknown> = {}) {
   });
 }
 
-async function loadApp(options: { qaEnabled?: boolean } = {}) {
+async function loadApp(options: { qaEnabled?: boolean; archiveAiMode?: string } = {}) {
   vi.resetModules();
   vi.unstubAllEnvs();
   vi.stubEnv('NODE_ENV', 'test');
@@ -56,6 +56,7 @@ async function loadApp(options: { qaEnabled?: boolean } = {}) {
   vi.stubEnv('LINE_CHANNEL_ACCESS_TOKEN', 'line-token');
   vi.stubEnv('GEMINI_API_KEY', 'gemini-key');
   vi.stubEnv('LINE_BOT_QA_ENABLED', String(options.qaEnabled ?? true));
+  if (options.archiveAiMode) vi.stubEnv('ARCHIVE_AI_MODE', options.archiveAiMode);
 
   geminiMocks.analyzeText.mockResolvedValue({ category: '閒聊', summary: '測試摘要' });
   geminiMocks.answerGroupQuestion.mockResolvedValue('這是 Gemini 回答');
@@ -89,8 +90,23 @@ describe('LINE webhook Gemini QA', () => {
 
     expect(response.body.stored).toBe(1);
     expect(response.body.replied).toBe(0);
+    expect(geminiMocks.analyzeText).toHaveBeenCalledWith('一般訊息', '其他', { forceLocal: true });
+    expect(geminiMocks.classifyTopic).toHaveBeenCalledWith(expect.any(Object), { forceLocal: true });
     expect(geminiMocks.answerGroupQuestion).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('can opt into AI archive analysis for all messages', async () => {
+    const app = await loadApp({ archiveAiMode: 'all' });
+
+    const response = await request(app)
+      .post('/webhook/line')
+      .send({ events: [textEvent()] })
+      .expect(200);
+
+    expect(response.body.stored).toBe(1);
+    expect(geminiMocks.analyzeText).toHaveBeenCalledWith('一般訊息', '其他', { forceLocal: false });
+    expect(geminiMocks.classifyTopic).toHaveBeenCalledWith(expect.any(Object), { forceLocal: false });
   });
 
   it('answers with Gemini and LINE reply when the bot is mentioned', async () => {

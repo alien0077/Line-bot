@@ -240,6 +240,100 @@ select {
   overflow-x: auto;
 }
 
+.records-thread-list {
+  display: grid;
+  gap: 12px;
+}
+
+.record-thread {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.record-thread summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  list-style: none;
+  padding: 14px;
+}
+
+.record-thread summary::-webkit-details-marker {
+  display: none;
+}
+
+.record-thread summary span:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.record-thread summary strong,
+.record-thread summary small {
+  overflow-wrap: anywhere;
+}
+
+.record-thread summary small,
+.thread-summary,
+.record-summary {
+  color: var(--muted);
+}
+
+.thread-summary {
+  border-top: 1px solid var(--line);
+  margin: 0;
+  padding: 10px 14px;
+}
+
+.thread-records {
+  display: grid;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+.record-card {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.record-card-head {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.record-content,
+.record-summary {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.record-media {
+  margin-top: 2px;
+}
+
+.thread-pagination {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  padding: 4px 0;
+}
+
+.thread-pagination span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .records-table {
   width: 100%;
   border-collapse: collapse;
@@ -258,6 +352,19 @@ select {
 .records-table th {
   color: var(--muted);
   font-weight: 700;
+}
+
+.media-link {
+  color: var(--accent-dark);
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.media-link:hover span {
+  text-decoration: underline;
 }
 
 .media-preview {

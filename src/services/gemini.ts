@@ -49,16 +49,62 @@ function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+const topicStopwords = new Set([
+  '請問',
+  '怎麼',
+  '如何',
+  '為什麼',
+  '可以',
+  '可否',
+  '是不是',
+  '是否',
+  '今天',
+  '明天',
+  '昨天',
+  '剛剛',
+  '剛才',
+  '這個',
+  '那個',
+  '大家',
+  '有人',
+  '什麼',
+  '一下',
+  '幫我',
+  '幫忙',
+  '麻煩',
+  '謝謝',
+  '我們',
+  '你們',
+  '他們',
+  '這週',
+  '這周',
+  '這裡',
+  '群組',
+  '本群'
+]);
+
+function addScore(scores: Partial<Record<MessageCategory, number>>, category: MessageCategory, score: number): void {
+  scores[category] = (scores[category] ?? 0) + score;
+}
+
 function localAnalyze(text: string, fallbackCategory: MessageCategory = '其他'): AnalysisResult {
   const trimmed = text.trim();
   const lower = trimmed.toLowerCase();
-  let category = fallbackCategory;
+  const scores: Partial<Record<MessageCategory, number>> = {};
 
-  if (/請|待辦|todo|deadline|期限|記得|麻煩/.test(lower)) category = '待辦';
-  else if (/[?？]|請問|怎麼|如何|為什麼/.test(trimmed)) category = '問題';
-  else if (/公告|通知|重要|會議|發布/.test(trimmed)) category = '公告';
-  else if (['圖片', '檔案', '影片', '音訊'].includes(fallbackCategory)) category = fallbackCategory;
-  else if (trimmed) category = '閒聊';
+  if (['圖片', '檔案', '影片', '音訊'].includes(fallbackCategory)) addScore(scores, fallbackCategory, 5);
+  if (/公告|通知|重要|宣布|發布|異動|停班|停課|更新/.test(trimmed)) addScore(scores, '公告', 4);
+  if (/會議|開會|集合|報名|活動|課程|行程|時間|地點/.test(trimmed)) addScore(scores, '公告', 2);
+  if (/待辦|todo|deadline|期限|記得|提醒|追蹤|處理|完成|繳交|回覆/.test(lower)) addScore(scores, '待辦', 4);
+  if (/麻煩|幫忙|協助|請大家|請記得|請協助|請幫/.test(trimmed)) addScore(scores, '待辦', 2);
+  if (/[?？]|請問|怎麼|如何|為什麼|哪裡|哪個|何時|幾點|是否|可否|嗎/.test(trimmed)) addScore(scores, '問題', 5);
+  if (/http:\/\/|https:\/\//i.test(trimmed)) addScore(scores, trimmed.length < 120 ? '其他' : '閒聊', 2);
+  if (!trimmed) addScore(scores, fallbackCategory, 1);
+  if (trimmed && !Object.keys(scores).length) addScore(scores, '閒聊', 1);
+
+  const category = (Object.entries(scores)
+    .sort((a, b) => b[1] - a[1])
+    .map(([key]) => key)[0] as MessageCategory | undefined) ?? fallbackCategory;
 
   return {
     category,
@@ -66,13 +112,61 @@ function localAnalyze(text: string, fallbackCategory: MessageCategory = '其他'
   };
 }
 
+function normalizeTopicText(text: string): string {
+  return text
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/@\S+/g, ' ')
+    .replace(/[「」『』()[\]{}<>,，。！？?！:：;；/\\|"'`~*_+=#$%^&\n\r\t]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function topicTokens(record: Pick<ArchiveRecord, 'category' | 'content' | 'driveFileName' | 'messageType' | 'aiSummary'>): string[] {
+  const source = normalizeTopicText([record.content, record.aiSummary, record.driveFileName].filter(Boolean).join(' '));
+  if (!source && record.driveFileName) return [record.driveFileName.replace(/\.[^.]+$/, '').slice(0, 12)];
+  if (/https?:\/\//i.test(record.content || '')) return ['連結分享'];
+
+  const rawTokens = source.match(/[\p{Script=Han}a-zA-Z0-9]{2,}/gu) ?? [];
+  const tokens = rawTokens
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2)
+    .filter((token) => !topicStopwords.has(token))
+    .filter((token) => !/^\d+$/.test(token));
+
+  const compactChinese = source.replace(/[^\p{Script=Han}]/gu, '');
+  if (compactChinese.length >= 4) {
+    for (const phrase of compactChinese.match(/[\p{Script=Han}]{4,8}/gu) ?? []) {
+      if (!topicStopwords.has(phrase)) tokens.unshift(phrase);
+    }
+  }
+
+  return [...new Set(tokens)].slice(0, 3);
+}
+
+function topicTitleFromTokens(record: Pick<ArchiveRecord, 'category' | 'content' | 'driveFileName' | 'messageType' | 'aiSummary'>, tokens: string[]): string {
+  if (tokens.length) {
+    const title = tokens.join('、').slice(0, 16);
+    if (record.category !== '閒聊' || title.length >= 3) return title;
+  }
+  if (record.messageType === 'sticker') return '貼圖訊息';
+  if (record.category === '圖片' && record.driveFileName) return '圖片分享';
+  if (record.category === '檔案' && record.driveFileName) return '檔案分享';
+  return record.category || '未分類主題';
+}
+
+function topicSlug(groupId: string, title: string): string {
+  const normalized = title.toLowerCase().replace(/[^\p{Script=Han}a-z0-9]+/gu, '-').replace(/^-|-$/g, '');
+  return `local-${groupId}-${normalized || title}`;
+}
+
 function localTopic(record: Pick<ArchiveRecord, 'groupId' | 'category' | 'content' | 'driveFileName' | 'messageType' | 'aiSummary'>): TopicResult {
-  const title = record.category || '未分類主題';
+  const tokens = topicTokens(record);
+  const title = topicTitleFromTokens(record, tokens);
   return {
-    topicId: `local-${record.groupId}-${title}`,
+    topicId: topicSlug(record.groupId, title),
     topicTitle: title,
     topicSummary: record.aiSummary || record.content || record.driveFileName || `${title}相關${record.messageType}訊息`,
-    topicConfidence: 0.35
+    topicConfidence: tokens.length ? 0.55 : 0.35
   };
 }
 
@@ -295,7 +389,7 @@ async function generateAnswerText(contents: string, options: AiGenerateOptions =
 }
 
 export function getAnalysisMode(): 'gemini' | 'local' {
-  return config.GEMINI_API_KEY && config.GEMINI_TEXT_ANALYSIS_ENABLED ? 'gemini' : 'local';
+  return config.ARCHIVE_AI_MODE !== 'local' && config.GEMINI_API_KEY && config.GEMINI_TEXT_ANALYSIS_ENABLED ? 'gemini' : 'local';
 }
 
 export async function analyzeText(
