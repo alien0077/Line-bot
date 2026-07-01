@@ -5,6 +5,8 @@ import { listRecordViews } from './store.js';
 
 const categories: MessageCategory[] = ['公告', '待辦', '問題', '檔案', '圖片', '影片', '音訊', '閒聊', '其他'];
 const maxLineReplyLength = 1500;
+const geminiMaxAttempts = 3;
+const transientGeminiStatuses = new Set([429, 500, 502, 503, 504]);
 
 let dailyKey = '';
 let dailyCount = 0;
@@ -44,6 +46,28 @@ function canUseGemini(): boolean {
   return dailyCount < config.GEMINI_DAILY_LIMIT;
 }
 
+function errorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const status = (error as { status?: unknown; code?: unknown }).status ?? (error as { code?: unknown }).code;
+  if (typeof status === 'number') return status;
+  if (typeof status === 'string') {
+    const parsed = Number(status);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function isTransientGeminiError(error: unknown): boolean {
+  const status = errorStatus(error);
+  return Boolean(status && transientGeminiStatuses.has(status));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 async function generateGeminiText(contents: string): Promise<string> {
   if (!canUseGemini()) {
     throw new Error('Gemini is not configured or daily limit has been reached');
@@ -51,11 +75,24 @@ async function generateGeminiText(contents: string): Promise<string> {
 
   dailyCount += 1;
   const ai = new GoogleGenAI({ apiKey: config.GEMINI_API_KEY });
-  const response = await ai.models.generateContent({
-    model: config.GEMINI_MODEL,
-    contents
-  });
-  return response.text ?? '';
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= geminiMaxAttempts; attempt += 1) {
+    try {
+      const response = await ai.models.generateContent({
+        model: config.GEMINI_MODEL,
+        contents
+      });
+      return response.text ?? '';
+    } catch (error) {
+      lastError = error;
+      if (!isTransientGeminiError(error) || attempt === geminiMaxAttempts) break;
+      console.warn(`Gemini transient error, retrying attempt ${attempt + 1}/${geminiMaxAttempts}`, error);
+      await sleep(500 * attempt);
+    }
+  }
+
+  throw lastError;
 }
 
 export function getAnalysisMode(): 'gemini' | 'local' {

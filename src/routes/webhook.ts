@@ -66,7 +66,7 @@ async function replyToMention(event: LineWebhookEvent): Promise<boolean> {
   } catch (error) {
     console.warn('LINE bot QA failed', error);
     try {
-      await replyText(event.replyToken, '我剛剛整理答案時出了一點問題，請稍後再問我一次。');
+      await replyText(event.replyToken, 'Gemini 現在有點忙，我已經重試過但還是沒拿到答案。請稍後再問我一次。');
       return true;
     } catch (replyError) {
       console.warn('LINE bot QA fallback reply failed', replyError);
