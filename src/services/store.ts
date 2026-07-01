@@ -1,7 +1,6 @@
 import { nanoid } from 'nanoid';
-import { hasGoogleWorkspaceConfig } from '../config.js';
+import { config, hasGoogleWorkspaceConfig } from '../config.js';
 import { appendSheetRecord, readGroupAliases, readSheetRecords } from './googleWorkspace.js';
-import { getAnalysisMode } from './gemini.js';
 import type { ArchiveRecord, ArchiveRecordView, GroupOption, PublicSummary } from '../types.js';
 import { startOfLast7Days, startOfToday } from '../utils/dates.js';
 
@@ -126,6 +125,6 @@ export async function buildPublicSummary(limit: number): Promise<PublicSummary> 
       .filter(Boolean)
       .slice(0, 5),
     storageMode: storageMode(),
-    analysisMode: getAnalysisMode()
+    analysisMode: config.GEMINI_API_KEY && config.GEMINI_TEXT_ANALYSIS_ENABLED ? 'gemini' : 'local'
   };
 }

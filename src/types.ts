@@ -60,6 +60,14 @@ export interface LineWebhookPayload {
   events?: LineWebhookEvent[];
 }
 
+export interface LineMentionee {
+  index?: number;
+  length?: number;
+  userId?: string;
+  type?: string;
+  isSelf?: boolean;
+}
+
 export interface LineWebhookEvent {
   type: string;
   timestamp?: number;
@@ -77,6 +85,9 @@ export interface LineWebhookEvent {
     fileSize?: number;
     packageId?: string;
     stickerId?: string;
+    mention?: {
+      mentionees?: LineMentionee[];
+    };
   };
   replyToken?: string;
 }

@@ -1,6 +1,14 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+const envBoolean = z.preprocess((value) => {
+  if (typeof value !== 'string') return value;
+  const normalized = value.trim().toLowerCase();
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+  if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  return value;
+}, z.boolean());
+
 const envSchema = z.object({
   PORT: z.coerce.number().default(8080),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -11,7 +19,7 @@ const envSchema = z.object({
   DASHBOARD_SESSION_DAYS: z.coerce.number().default(30),
   LINE_CHANNEL_SECRET: z.string().default(''),
   LINE_CHANNEL_ACCESS_TOKEN: z.string().default(''),
-  ALLOW_UNSIGNED_WEBHOOKS: z.coerce.boolean().default(true),
+  ALLOW_UNSIGNED_WEBHOOKS: envBoolean.default(true),
   GOOGLE_SHEETS_SPREADSHEET_ID: z.string().default(''),
   GOOGLE_SHEETS_SHEET_NAME: z.string().default('Records'),
   GOOGLE_GROUPS_SHEET_NAME: z.string().default('Groups'),
@@ -21,8 +29,10 @@ const envSchema = z.object({
   USER_HASH_SALT: z.string().default('line-dashboard-dev-salt'),
   GEMINI_API_KEY: z.string().default(''),
   GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
-  GEMINI_TEXT_ANALYSIS_ENABLED: z.coerce.boolean().default(true),
+  GEMINI_TEXT_ANALYSIS_ENABLED: envBoolean.default(true),
   GEMINI_DAILY_LIMIT: z.coerce.number().default(50),
+  LINE_BOT_QA_ENABLED: envBoolean.default(true),
+  LINE_BOT_QA_CONTEXT_LIMIT: z.coerce.number().default(30),
   PUBLIC_RECENT_LIMIT: z.coerce.number().default(10),
   ADMIN_PAGE_SIZE: z.coerce.number().default(100)
 });

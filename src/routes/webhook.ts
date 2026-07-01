@@ -2,8 +2,17 @@ import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { config } from '../config.js';
 import type { ArchiveRecord, LineWebhookEvent, LineWebhookPayload, MessageCategory } from '../types.js';
-import { fetchLineContent, getEventGroupId, getEventText, normalizeMessageType, verifyLineSignature } from '../services/line.js';
-import { analyzeText } from '../services/gemini.js';
+import {
+  fetchLineContent,
+  getEventGroupId,
+  getEventText,
+  isBotMentioned,
+  normalizeMessageType,
+  replyText,
+  stripMentionText,
+  verifyLineSignature
+} from '../services/line.js';
+import { analyzeText, answerGroupQuestion } from '../services/gemini.js';
 import { uploadMediaToDrive } from '../services/googleWorkspace.js';
 import { addRecord } from '../services/store.js';
 import { shortHash } from '../utils/hash.js';
@@ -47,6 +56,25 @@ async function recordFromEvent(event: LineWebhookEvent): Promise<ArchiveRecord |
   };
 }
 
+async function replyToMention(event: LineWebhookEvent): Promise<boolean> {
+  if (!config.LINE_BOT_QA_ENABLED || !event.replyToken || !isBotMentioned(event)) return false;
+
+  try {
+    const answer = await answerGroupQuestion(stripMentionText(event), getEventGroupId(event));
+    await replyText(event.replyToken, answer);
+    return true;
+  } catch (error) {
+    console.warn('LINE bot QA failed', error);
+    try {
+      await replyText(event.replyToken, '我剛剛整理答案時出了一點問題，請稍後再問我一次。');
+      return true;
+    } catch (replyError) {
+      console.warn('LINE bot QA fallback reply failed', replyError);
+      return false;
+    }
+  }
+}
+
 webhookRouter.post('/line', async (req, res) => {
   const signature = req.header('x-line-signature') ?? '';
   const rawBody = Buffer.isBuffer(req.rawBody) ? req.rawBody : Buffer.from(JSON.stringify(req.body ?? {}));
@@ -58,18 +86,21 @@ webhookRouter.post('/line', async (req, res) => {
   const payload = req.body as LineWebhookPayload;
   const events = payload.events ?? [];
   const stored: string[] = [];
+  let replied = 0;
 
   for (const event of events) {
     const record = await recordFromEvent(event);
     if (!record) continue;
     await addRecord(record);
     stored.push(record.id);
+    if (await replyToMention(event)) replied += 1;
   }
 
   res.json({
     ok: true,
     received: events.length,
     stored: stored.length,
+    replied,
     ids: stored
   });
 });
