@@ -191,7 +191,7 @@ function configuredProviderOrder(): AiProvider[] {
   const order: AiProvider[] = [];
   const primary = normalizeProvider(config.AI_PROVIDER) ?? 'gemini';
   const fallbacks = config.AI_FALLBACK_PROVIDERS
-    .split(',')
+    .split(/[,;\s]+/)
     .map((provider) => normalizeProvider(provider))
     .filter((provider): provider is AiProvider => Boolean(provider));
 
