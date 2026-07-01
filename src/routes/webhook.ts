@@ -28,6 +28,10 @@ function baseCategory(messageType: ArchiveRecord['messageType']): MessageCategor
   return '其他';
 }
 
+function shouldReplyToMention(event: LineWebhookEvent): boolean {
+  return Boolean(config.LINE_BOT_QA_ENABLED && event.replyToken && isBotMentioned(event));
+}
+
 async function recordFromEvent(event: LineWebhookEvent): Promise<ArchiveRecord | null> {
   if (event.type !== 'message' || !event.message) return null;
 
@@ -37,7 +41,8 @@ async function recordFromEvent(event: LineWebhookEvent): Promise<ArchiveRecord |
   const text = getEventText(event);
   const media = await fetchLineContent(event);
   const drive = media ? await uploadMediaToDrive(groupId, messageId, media) : { fileId: '', fileName: '' };
-  const analysis = await analyzeText(text, baseCategory(messageType));
+  const reserveGeminiForAnswer = shouldReplyToMention(event);
+  const analysis = await analyzeText(text, baseCategory(messageType), { forceLocal: reserveGeminiForAnswer });
   const topic = await classifyTopic({
     groupId,
     messageType,
@@ -46,7 +51,7 @@ async function recordFromEvent(event: LineWebhookEvent): Promise<ArchiveRecord |
     driveFileName: drive.fileName,
     mimeType: media?.mimeType ?? '',
     aiSummary: analysis.summary
-  });
+  }, { forceLocal: reserveGeminiForAnswer });
 
   return {
     id: nanoid(),
@@ -70,16 +75,18 @@ async function recordFromEvent(event: LineWebhookEvent): Promise<ArchiveRecord |
 }
 
 async function replyToMention(event: LineWebhookEvent): Promise<boolean> {
-  if (!config.LINE_BOT_QA_ENABLED || !event.replyToken || !isBotMentioned(event)) return false;
+  if (!shouldReplyToMention(event)) return false;
+  const replyToken = event.replyToken;
+  if (!replyToken) return false;
 
   try {
     const answer = await answerGroupQuestion(stripMentionText(event), getEventGroupId(event));
-    await replyText(event.replyToken, answer);
+    await replyText(replyToken, answer);
     return true;
   } catch (error) {
     console.warn('LINE bot QA failed', error);
     try {
-      await replyText(event.replyToken, 'Gemini 現在有點忙，我已經重試過但還是沒拿到答案。請稍後再問我一次。');
+      await replyText(replyToken, 'Gemini 現在有點忙，我暫時沒有拿到答案。請稍後再問我一次。');
       return true;
     } catch (replyError) {
       console.warn('LINE bot QA fallback reply failed', replyError);

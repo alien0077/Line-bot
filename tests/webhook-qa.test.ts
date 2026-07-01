@@ -103,6 +103,8 @@ describe('LINE webhook Gemini QA', () => {
 
     expect(response.body.stored).toBe(1);
     expect(response.body.replied).toBe(1);
+    expect(geminiMocks.analyzeText).toHaveBeenCalledWith('@Line-bot 這週有什麼待辦？', '其他', { forceLocal: true });
+    expect(geminiMocks.classifyTopic).toHaveBeenCalledWith(expect.any(Object), { forceLocal: true });
     expect(geminiMocks.answerGroupQuestion).toHaveBeenCalledWith('這週有什麼待辦？', 'group-1');
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, init] = vi.mocked(fetch).mock.calls[0];

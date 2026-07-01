@@ -83,4 +83,17 @@ describe('Gemini group QA routing', () => {
     );
     expect(genaiMocks.generateContent.mock.calls[0][0].contents).toContain('同群組歸檔紀錄');
   });
+
+  it('returns a clear quota message instead of throwing when Gemini quota is exhausted', async () => {
+    const { answerGroupQuestion } = await loadGemini();
+    const quotaError = Object.assign(new Error('RESOURCE_EXHAUSTED: free_tier_requests quota exceeded'), {
+      status: 429
+    });
+    genaiMocks.generateContent.mockRejectedValue(quotaError);
+
+    const answer = await answerGroupQuestion('今天台南天氣如何？', 'group-1');
+
+    expect(answer).toContain('Gemini API 今日免費額度已用完');
+    expect(genaiMocks.generateContent).toHaveBeenCalledTimes(1);
+  });
 });

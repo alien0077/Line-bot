@@ -8,7 +8,7 @@ const categories: MessageCategory[] = ['公告', '待辦', '問題', '檔案', '
 const maxLineReplyLength = 1500;
 const geminiMaxAttempts = 3;
 const topicCandidateLimit = 12;
-const transientGeminiStatuses = new Set([429, 500, 502, 503, 504]);
+const transientGeminiStatuses = new Set([500, 502, 503, 504]);
 const groupContextKeywords = [
   '群組',
   '群裡',
@@ -32,6 +32,11 @@ const groupContextKeywords = [
 
 let dailyKey = '';
 let dailyCount = 0;
+let quotaBlockedUntil = 0;
+
+type GeminiCallOptions = {
+  forceLocal?: boolean;
+};
 
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
@@ -75,6 +80,7 @@ function resetCounterIfNeeded(): void {
 function canUseGemini(): boolean {
   if (!config.GEMINI_API_KEY) return false;
   resetCounterIfNeeded();
+  if (Date.now() < quotaBlockedUntil) return false;
   return dailyCount < config.GEMINI_DAILY_LIMIT;
 }
 
@@ -92,6 +98,32 @@ function errorStatus(error: unknown): number | undefined {
 function isTransientGeminiError(error: unknown): boolean {
   const status = errorStatus(error);
   return Boolean(status && transientGeminiStatuses.has(status));
+}
+
+function errorText(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function isGeminiQuotaError(error: unknown): boolean {
+  const status = errorStatus(error);
+  if (status === 429) return true;
+  return /RESOURCE_EXHAUSTED|quota|free_tier_requests|rate limit/i.test(errorText(error));
+}
+
+function blockGeminiUntilNextUtcDay(): void {
+  const nextDay = new Date();
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+  nextDay.setUTCHours(0, 0, 0, 0);
+  quotaBlockedUntil = Math.max(quotaBlockedUntil, nextDay.getTime());
+}
+
+function geminiLimitMessage(): string {
+  return 'Gemini API 今日免費額度已用完，所以我現在無法查資料或產生 AI 回答。明天額度重置後再問我會比較穩。';
 }
 
 function sleep(ms: number): Promise<void> {
@@ -129,6 +161,10 @@ async function generateGeminiText(contents: string, generationConfig: GenerateCo
       return response.text ?? '';
     } catch (error) {
       lastError = error;
+      if (isGeminiQuotaError(error)) {
+        blockGeminiUntilNextUtcDay();
+        break;
+      }
       if (!isTransientGeminiError(error) || attempt === geminiMaxAttempts) break;
       console.warn(`Gemini transient error, retrying attempt ${attempt + 1}/${geminiMaxAttempts}`, error);
       await sleep(500 * attempt);
@@ -142,8 +178,12 @@ export function getAnalysisMode(): 'gemini' | 'local' {
   return config.GEMINI_API_KEY && config.GEMINI_TEXT_ANALYSIS_ENABLED ? 'gemini' : 'local';
 }
 
-export async function analyzeText(text: string, fallbackCategory: MessageCategory = '其他'): Promise<AnalysisResult> {
-  if (!config.GEMINI_TEXT_ANALYSIS_ENABLED || !text.trim()) {
+export async function analyzeText(
+  text: string,
+  fallbackCategory: MessageCategory = '其他',
+  options: GeminiCallOptions = {}
+): Promise<AnalysisResult> {
+  if (options.forceLocal || !config.GEMINI_TEXT_ANALYSIS_ENABLED || !text.trim()) {
     return localAnalyze(text, fallbackCategory);
   }
 
@@ -164,6 +204,9 @@ export async function analyzeText(text: string, fallbackCategory: MessageCategor
       summary: String(parsed.summary ?? text.slice(0, 80)).slice(0, 160)
     };
   } catch (error) {
+    if (isGeminiQuotaError(error)) {
+      blockGeminiUntilNextUtcDay();
+    }
     console.warn('Gemini analysis failed, falling back to local analysis', error);
     return localAnalyze(text, fallbackCategory);
   }
@@ -217,8 +260,11 @@ function buildTopicPrompt(record: Pick<ArchiveRecord, 'groupId' | 'messageType' 
   ].join('\n');
 }
 
-export async function classifyTopic(record: Pick<ArchiveRecord, 'groupId' | 'messageType' | 'content' | 'category' | 'driveFileName' | 'mimeType' | 'aiSummary'>): Promise<TopicResult> {
-  if (!canUseGemini()) {
+export async function classifyTopic(
+  record: Pick<ArchiveRecord, 'groupId' | 'messageType' | 'content' | 'category' | 'driveFileName' | 'mimeType' | 'aiSummary'>,
+  options: GeminiCallOptions = {}
+): Promise<TopicResult> {
+  if (options.forceLocal || !canUseGemini()) {
     return localTopic(record);
   }
 
@@ -241,6 +287,9 @@ export async function classifyTopic(record: Pick<ArchiveRecord, 'groupId' | 'mes
       topicConfidence: clampConfidence(parsed.topicConfidence)
     };
   } catch (error) {
+    if (isGeminiQuotaError(error)) {
+      blockGeminiUntilNextUtcDay();
+    }
     console.warn('Gemini topic classification failed, falling back to local topic', error);
     return localTopic(record);
   }
@@ -324,28 +373,36 @@ export async function answerGroupQuestion(question: string, groupId: string): Pr
     return '目前尚未設定 Gemini API key，所以我還不能回答問題。';
   }
   if (!canUseGemini()) {
-    return '今天的 Gemini 使用量已達上限，晚點再問我會比較穩。';
+    return geminiLimitMessage();
   }
 
-  if (!shouldUseGroupContext(trimmedQuestion)) {
-    const answer = await generateGeminiText(buildGeneralAnswerPrompt(trimmedQuestion), googleSearchConfig());
-    return trimLineReply(answer || '我暫時沒有查到可靠答案，請再問一次。');
+  try {
+    if (!shouldUseGroupContext(trimmedQuestion)) {
+      const answer = await generateGeminiText(buildGeneralAnswerPrompt(trimmedQuestion), googleSearchConfig());
+      return trimLineReply(answer || '我暫時沒有查到可靠答案，請再問一次。');
+    }
+
+    const records = await listRecordViews();
+    const contextRecords = selectContextRecords(records, groupId, trimmedQuestion);
+    const context = formatContext(contextRecords);
+    const prompt = [
+      '你是 LINE 群組中的助理。請使用繁體中文回答。',
+      '回答時優先根據「同群組歸檔紀錄」；如果紀錄不足，請明確說明「群組紀錄裡沒有足夠資訊」，再用一般知識補充。',
+      '不要編造群組紀錄中不存在的事實。回答保持精簡、可直接貼在 LINE 群組中。',
+      '',
+      `使用者問題：${trimmedQuestion}`,
+      '',
+      '同群組歸檔紀錄：',
+      context
+    ].join('\n');
+
+    const answer = await generateGeminiText(prompt);
+    return trimLineReply(answer || '我暫時沒有產生到回答，請再問一次。');
+  } catch (error) {
+    if (isGeminiQuotaError(error)) {
+      blockGeminiUntilNextUtcDay();
+      return geminiLimitMessage();
+    }
+    throw error;
   }
-
-  const records = await listRecordViews();
-  const contextRecords = selectContextRecords(records, groupId, trimmedQuestion);
-  const context = formatContext(contextRecords);
-  const prompt = [
-    '你是 LINE 群組中的助理。請使用繁體中文回答。',
-    '回答時優先根據「同群組歸檔紀錄」；如果紀錄不足，請明確說明「群組紀錄裡沒有足夠資訊」，再用一般知識補充。',
-    '不要編造群組紀錄中不存在的事實。回答保持精簡、可直接貼在 LINE 群組中。',
-    '',
-    `使用者問題：${trimmedQuestion}`,
-    '',
-    '同群組歸檔紀錄：',
-    context
-  ].join('\n');
-
-  const answer = await generateGeminiText(prompt);
-  return trimLineReply(answer || '我暫時沒有產生到回答，請再問一次。');
 }
