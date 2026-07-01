@@ -22,7 +22,11 @@ const header = [
   'driveFileId',
   'driveFileName',
   'mimeType',
-  'aiSummary'
+  'aiSummary',
+  'topicId',
+  'topicTitle',
+  'topicSummary',
+  'topicConfidence'
 ];
 
 const groupHeader = ['groupId', 'displayName', 'notes', 'updatedAt'];
@@ -79,7 +83,11 @@ function recordFromRow(row: unknown[]): ArchiveRecord {
     driveFileId: value(9),
     driveFileName: value(10),
     mimeType: value(11),
-    aiSummary: value(12)
+    aiSummary: value(12),
+    topicId: value(13),
+    topicTitle: value(14),
+    topicSummary: value(15),
+    topicConfidence: Number(value(16) || 0)
   };
 }
 
@@ -121,7 +129,7 @@ async function writeHeader(title: string, lastColumn: string, values: string[]):
 }
 
 async function ensureSheetHeader(): Promise<void> {
-  await writeHeader(config.GOOGLE_SHEETS_SHEET_NAME, 'M', header);
+  await writeHeader(config.GOOGLE_SHEETS_SHEET_NAME, 'Q', header);
 }
 
 async function ensureGroupsHeader(): Promise<void> {
@@ -133,7 +141,7 @@ export async function appendSheetRecord(record: ArchiveRecord): Promise<void> {
   const sheets = await getSheets();
   await sheets.spreadsheets.values.append({
     spreadsheetId: config.GOOGLE_SHEETS_SPREADSHEET_ID,
-    range: `${config.GOOGLE_SHEETS_SHEET_NAME}!A:M`,
+    range: `${config.GOOGLE_SHEETS_SHEET_NAME}!A:Q`,
     valueInputOption: 'RAW',
     insertDataOption: 'INSERT_ROWS',
     requestBody: {
@@ -147,7 +155,7 @@ export async function readSheetRecords(): Promise<ArchiveRecord[]> {
   const sheets = await getSheets();
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: config.GOOGLE_SHEETS_SPREADSHEET_ID,
-    range: `${config.GOOGLE_SHEETS_SHEET_NAME}!A2:M10000`
+    range: `${config.GOOGLE_SHEETS_SHEET_NAME}!A2:Q10000`
   });
   return (response.data.values ?? []).map(recordFromRow).filter((record) => record.id);
 }

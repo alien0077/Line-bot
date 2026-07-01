@@ -3,12 +3,14 @@ import request from 'supertest';
 
 const geminiMocks = vi.hoisted(() => ({
   analyzeText: vi.fn(),
-  answerGroupQuestion: vi.fn()
+  answerGroupQuestion: vi.fn(),
+  classifyTopic: vi.fn()
 }));
 
 vi.mock('../src/services/gemini.js', () => ({
   analyzeText: geminiMocks.analyzeText,
   answerGroupQuestion: geminiMocks.answerGroupQuestion,
+  classifyTopic: geminiMocks.classifyTopic,
   getAnalysisMode: vi.fn(() => 'gemini')
 }));
 
@@ -57,6 +59,12 @@ async function loadApp(options: { qaEnabled?: boolean } = {}) {
 
   geminiMocks.analyzeText.mockResolvedValue({ category: '閒聊', summary: '測試摘要' });
   geminiMocks.answerGroupQuestion.mockResolvedValue('這是 Gemini 回答');
+  geminiMocks.classifyTopic.mockResolvedValue({
+    topicId: 'topic-1',
+    topicTitle: '測試主題',
+    topicSummary: '測試主題摘要',
+    topicConfidence: 0.9
+  });
   vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
 
   const { createApp } = await import('../src/app.js');
@@ -67,6 +75,7 @@ describe('LINE webhook Gemini QA', () => {
   beforeEach(() => {
     geminiMocks.analyzeText.mockReset();
     geminiMocks.answerGroupQuestion.mockReset();
+    geminiMocks.classifyTopic.mockReset();
     vi.unstubAllGlobals();
   });
 

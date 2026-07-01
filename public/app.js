@@ -6,6 +6,8 @@ const summaryEls = {
   analysisMode: document.querySelector('#analysisMode'),
   summaryList: document.querySelector('#summaryList'),
   groupCounts: document.querySelector('#groupCounts'),
+  topicCounts: document.querySelector('#topicCounts'),
+  topicList: document.querySelector('#topicList'),
   typeCounts: document.querySelector('#typeCounts'),
   categoryCounts: document.querySelector('#categoryCounts'),
   recentList: document.querySelector('#recentList')
@@ -18,6 +20,7 @@ const adminEls = {
   tools: document.querySelector('#adminTools'),
   search: document.querySelector('#searchInput'),
   group: document.querySelector('#groupFilter'),
+  topic: document.querySelector('#topicFilter'),
   type: document.querySelector('#typeFilter'),
   load: document.querySelector('#loadRecordsBtn'),
   table: document.querySelector('#recordsTable'),
@@ -54,15 +57,33 @@ async function loadSummary() {
     : '<li>尚無摘要，等群組開始傳訊息後會出現在這裡。</li>';
 
   renderChips(summaryEls.groupCounts, summary.groupCounts);
+  renderChips(summaryEls.topicCounts, summary.topicCounts);
   renderChips(summaryEls.typeCounts, summary.typeCounts);
   renderChips(summaryEls.categoryCounts, summary.categoryCounts);
+
+  summaryEls.topicList.innerHTML = summary.topics.length
+    ? summary.topics
+        .map(
+          (topic) => `
+            <article class="topic-item">
+              <div class="topic-title-row">
+                <strong>${escapeHtml(topic.topicTitle)}</strong>
+                <span class="chip">${topic.count} 則</span>
+              </div>
+              <div class="recent-meta">${formatTime(topic.lastMessageAt)} · ${escapeHtml(topic.groupName)}</div>
+              <p>${escapeHtml(topic.topicSummary || '尚無主題摘要')}</p>
+            </article>
+          `
+        )
+        .join('')
+    : '<p class="muted">尚無主題討論串。</p>';
 
   summaryEls.recentList.innerHTML = summary.recent.length
     ? summary.recent
         .map(
           (item) => `
             <article class="recent-item">
-              <div class="recent-meta">${formatTime(item.timestamp)} · ${escapeHtml(item.groupName)} · ${escapeHtml(item.messageType)} · ${escapeHtml(item.category)}</div>
+              <div class="recent-meta">${formatTime(item.timestamp)} · ${escapeHtml(item.groupName)} · ${escapeHtml(item.topicTitle)} · ${escapeHtml(item.messageType)} · ${escapeHtml(item.category)}</div>
               <strong>${escapeHtml(item.aiSummary || item.driveFileName || '未摘要')}</strong>
               <span>${escapeHtml(item.content || item.driveFileName || '非文字訊息')}</span>
             </article>
@@ -115,11 +136,24 @@ function renderGroupOptions(groups, selectedGroupId) {
   adminEls.group.innerHTML = options.join('');
 }
 
+function renderTopicOptions(topics, selectedTopicId) {
+  const options = ['<option value="">全部主題</option>'];
+  for (const topic of topics || []) {
+    const selected = topic.topicId === selectedTopicId ? ' selected' : '';
+    options.push(
+      `<option value="${escapeHtml(topic.topicId)}"${selected}>${escapeHtml(topic.topicTitle)} (${topic.count})</option>`
+    );
+  }
+  adminEls.topic.innerHTML = options.join('');
+}
+
 async function loadRecords(options = {}) {
   const params = new URLSearchParams();
   const selectedGroupId = adminEls.group.value;
+  const selectedTopicId = adminEls.topic.value;
   if (adminEls.search.value) params.set('search', adminEls.search.value);
   if (selectedGroupId) params.set('groupId', selectedGroupId);
+  if (selectedTopicId) params.set('topicId', selectedTopicId);
   if (adminEls.type.value) params.set('type', adminEls.type.value);
   const response = await fetch(`/api/admin/records?${params.toString()}`);
   if (!response.ok) {
@@ -132,6 +166,7 @@ async function loadRecords(options = {}) {
   const payload = await response.json();
   setAdminAuthenticated(true);
   renderGroupOptions(payload.groups, selectedGroupId);
+  renderTopicOptions(payload.topics, selectedTopicId);
   adminEls.message.textContent = `共 ${payload.count} 筆符合條件的紀錄。`;
   adminEls.tbody.innerHTML = payload.records.map(renderRecordRow).join('');
   return true;
@@ -142,6 +177,7 @@ function renderRecordRow(record) {
     <tr>
       <td data-label="時間">${formatTime(record.timestamp)}</td>
       <td data-label="群組"><strong>${escapeHtml(record.groupName)}</strong><br /><span class="muted small-text">${escapeHtml(record.groupId)}</span></td>
+      <td data-label="主題"><strong>${escapeHtml(record.topicTitle || '未分類主題')}</strong><br /><span class="muted small-text">${escapeHtml(record.topicSummary || '')}</span></td>
       <td data-label="類型">${escapeHtml(record.messageType)}</td>
       <td data-label="分類">${escapeHtml(record.category)}</td>
       <td data-label="內容">${escapeHtml(record.content || record.driveFileName || '非文字訊息')}</td>
@@ -169,6 +205,7 @@ document.querySelector('#refreshBtn').addEventListener('click', loadSummary);
 adminEls.loginForm.addEventListener('submit', login);
 adminEls.load.addEventListener('click', loadRecords);
 adminEls.group.addEventListener('change', loadRecords);
+adminEls.topic.addEventListener('change', loadRecords);
 adminEls.type.addEventListener('change', loadRecords);
 
 loadSummary().catch((error) => {

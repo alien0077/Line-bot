@@ -25,6 +25,10 @@ export interface ArchiveRecord {
   driveFileName: string;
   mimeType: string;
   aiSummary: string;
+  topicId: string;
+  topicTitle: string;
+  topicSummary: string;
+  topicConfidence: number;
 }
 
 export interface ArchiveRecordView extends ArchiveRecord {
@@ -37,6 +41,19 @@ export interface GroupOption {
   count: number;
 }
 
+export interface TopicThread {
+  topicId: string;
+  topicTitle: string;
+  topicSummary: string;
+  groupId: string;
+  groupName: string;
+  count: number;
+  firstMessageAt: string;
+  lastMessageAt: string;
+  categories: Record<string, number>;
+  messageTypes: Record<string, number>;
+}
+
 export interface PublicSummary {
   generatedAt: string;
   todayCount: number;
@@ -44,7 +61,9 @@ export interface PublicSummary {
   typeCounts: Record<string, number>;
   categoryCounts: Record<string, number>;
   groupCounts: Record<string, number>;
-  recent: Array<Pick<ArchiveRecordView, 'timestamp' | 'groupId' | 'groupName' | 'messageType' | 'category' | 'content' | 'aiSummary' | 'driveFileName'>>;
+  topicCounts: Record<string, number>;
+  topics: TopicThread[];
+  recent: Array<Pick<ArchiveRecordView, 'timestamp' | 'groupId' | 'groupName' | 'messageType' | 'category' | 'content' | 'aiSummary' | 'driveFileName' | 'topicTitle'>>;
   summaries: string[];
   storageMode: 'sheets' | 'memory';
   analysisMode: 'gemini' | 'local';
@@ -53,6 +72,13 @@ export interface PublicSummary {
 export interface AnalysisResult {
   category: MessageCategory;
   summary: string;
+}
+
+export interface TopicResult {
+  topicId: string;
+  topicTitle: string;
+  topicSummary: string;
+  topicConfidence: number;
 }
 
 export interface LineWebhookPayload {

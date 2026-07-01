@@ -1,11 +1,13 @@
 import { GoogleGenAI, type GenerateContentConfig } from '@google/genai';
+import { nanoid } from 'nanoid';
 import { config } from '../config.js';
-import type { AnalysisResult, ArchiveRecordView, MessageCategory } from '../types.js';
+import type { AnalysisResult, ArchiveRecord, ArchiveRecordView, MessageCategory, TopicResult } from '../types.js';
 import { listRecordViews } from './store.js';
 
 const categories: MessageCategory[] = ['公告', '待辦', '問題', '檔案', '圖片', '影片', '音訊', '閒聊', '其他'];
 const maxLineReplyLength = 1500;
 const geminiMaxAttempts = 3;
+const topicCandidateLimit = 12;
 const transientGeminiStatuses = new Set([429, 500, 502, 503, 504]);
 const groupContextKeywords = [
   '群組',
@@ -52,6 +54,16 @@ function localAnalyze(text: string, fallbackCategory: MessageCategory = '其他'
   };
 }
 
+function localTopic(record: Pick<ArchiveRecord, 'groupId' | 'category' | 'content' | 'driveFileName' | 'messageType' | 'aiSummary'>): TopicResult {
+  const title = record.category || '未分類主題';
+  return {
+    topicId: `local-${record.groupId}-${title}`,
+    topicTitle: title,
+    topicSummary: record.aiSummary || record.content || record.driveFileName || `${title}相關${record.messageType}訊息`,
+    topicConfidence: 0.35
+  };
+}
+
 function resetCounterIfNeeded(): void {
   const key = todayKey();
   if (key !== dailyKey) {
@@ -86,6 +98,16 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function cleanJson(raw: string): string {
+  return raw.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+}
+
+function clampConfidence(value: unknown): number {
+  const confidence = Number(value);
+  if (!Number.isFinite(confidence)) return 0;
+  return Math.max(0, Math.min(1, confidence));
 }
 
 async function generateGeminiText(contents: string, generationConfig: GenerateContentConfig = {}): Promise<string> {
@@ -130,9 +152,9 @@ export async function analyzeText(text: string, fallbackCategory: MessageCategor
   }
 
   try {
-    const raw = (await generateGeminiText(
+    const raw = cleanJson(await generateGeminiText(
       `請把以下 LINE 群組訊息分類並摘要。只回 JSON，不要 markdown。JSON 欄位必須是 category 與 summary。分類只能是 ${categories.join('、')}。\n\n訊息：${text}`
-    )).replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+    ));
     const parsed = JSON.parse(raw) as Partial<AnalysisResult>;
     const category = categories.includes(parsed.category as MessageCategory)
       ? (parsed.category as MessageCategory)
@@ -144,6 +166,83 @@ export async function analyzeText(text: string, fallbackCategory: MessageCategor
   } catch (error) {
     console.warn('Gemini analysis failed, falling back to local analysis', error);
     return localAnalyze(text, fallbackCategory);
+  }
+}
+
+function topicCandidates(records: ArchiveRecordView[], groupId: string): ArchiveRecordView[] {
+  const latestByTopic = new Map<string, ArchiveRecordView>();
+  for (const record of records) {
+    if (record.groupId !== groupId || !record.topicId) continue;
+    const existing = latestByTopic.get(record.topicId);
+    if (!existing || Date.parse(record.timestamp) > Date.parse(existing.timestamp)) {
+      latestByTopic.set(record.topicId, record);
+    }
+  }
+  return [...latestByTopic.values()]
+    .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
+    .slice(0, topicCandidateLimit);
+}
+
+function formatTopicCandidates(candidates: ArchiveRecordView[]): string {
+  if (!candidates.length) return '目前沒有既有主題。';
+  return candidates
+    .map((record, index) => {
+      return `${index + 1}. topicId=${record.topicId}; title=${record.topicTitle}; summary=${record.topicSummary || record.aiSummary}; lastMessageAt=${record.timestamp}`;
+    })
+    .join('\n');
+}
+
+function buildTopicPrompt(record: Pick<ArchiveRecord, 'groupId' | 'messageType' | 'content' | 'category' | 'driveFileName' | 'mimeType' | 'aiSummary'>, candidates: ArchiveRecordView[]): string {
+  return [
+    '你是 LINE 群組訊息歸檔系統的主題分類器。請判斷新訊息應該延續哪個既有主題，或建立新主題。',
+    '只回 JSON，不要 markdown。JSON 欄位：topicId、topicTitle、topicSummary、topicConfidence。',
+    '如果新訊息和既有主題是同一件事、同一活動、同一問題的後續，就沿用既有 topicId。',
+    '如果只是同一大類但不是同一討論串，請建立新主題，topicId 留空字串。',
+    '圖片、影片、音訊、檔案需依檔名、訊息類型、AI 摘要與最近主題判斷；不確定時建立新主題。',
+    'topicTitle 請用 4 到 16 個繁體中文字，適合放在 dashboard。',
+    'topicSummary 請用一句繁體中文摘要目前主題。',
+    'topicConfidence 是 0 到 1 的數字。',
+    '',
+    '既有主題：',
+    formatTopicCandidates(candidates),
+    '',
+    '新訊息：',
+    `groupId=${record.groupId}`,
+    `messageType=${record.messageType}`,
+    `category=${record.category}`,
+    `content=${record.content || '(非文字訊息)'}`,
+    `driveFileName=${record.driveFileName || ''}`,
+    `mimeType=${record.mimeType || ''}`,
+    `aiSummary=${record.aiSummary || ''}`
+  ].join('\n');
+}
+
+export async function classifyTopic(record: Pick<ArchiveRecord, 'groupId' | 'messageType' | 'content' | 'category' | 'driveFileName' | 'mimeType' | 'aiSummary'>): Promise<TopicResult> {
+  if (!canUseGemini()) {
+    return localTopic(record);
+  }
+
+  try {
+    const records = await listRecordViews();
+    const candidates = topicCandidates(records, record.groupId);
+    const candidateIds = new Set(candidates.map((candidate) => candidate.topicId));
+    const raw = cleanJson(await generateGeminiText(buildTopicPrompt(record, candidates)));
+    const parsed = JSON.parse(raw) as Partial<TopicResult>;
+    const topicId = String(parsed.topicId ?? '').trim();
+    const selected = topicId && candidateIds.has(topicId)
+      ? candidates.find((candidate) => candidate.topicId === topicId)
+      : undefined;
+    const title = String(parsed.topicTitle || selected?.topicTitle || record.category || '未分類主題').trim().slice(0, 32);
+    const summary = String(parsed.topicSummary || selected?.topicSummary || record.aiSummary || record.content || record.driveFileName || title).trim().slice(0, 180);
+    return {
+      topicId: selected?.topicId || `topic-${nanoid(10)}`,
+      topicTitle: title,
+      topicSummary: summary,
+      topicConfidence: clampConfidence(parsed.topicConfidence)
+    };
+  } catch (error) {
+    console.warn('Gemini topic classification failed, falling back to local topic', error);
+    return localTopic(record);
   }
 }
 

@@ -12,7 +12,7 @@ import {
   stripMentionText,
   verifyLineSignature
 } from '../services/line.js';
-import { analyzeText, answerGroupQuestion } from '../services/gemini.js';
+import { analyzeText, answerGroupQuestion, classifyTopic } from '../services/gemini.js';
 import { uploadMediaToDrive } from '../services/googleWorkspace.js';
 import { addRecord } from '../services/store.js';
 import { shortHash } from '../utils/hash.js';
@@ -38,6 +38,15 @@ async function recordFromEvent(event: LineWebhookEvent): Promise<ArchiveRecord |
   const media = await fetchLineContent(event);
   const drive = media ? await uploadMediaToDrive(groupId, messageId, media) : { fileId: '', fileName: '' };
   const analysis = await analyzeText(text, baseCategory(messageType));
+  const topic = await classifyTopic({
+    groupId,
+    messageType,
+    content: text,
+    category: analysis.category,
+    driveFileName: drive.fileName,
+    mimeType: media?.mimeType ?? '',
+    aiSummary: analysis.summary
+  });
 
   return {
     id: nanoid(),
@@ -52,7 +61,11 @@ async function recordFromEvent(event: LineWebhookEvent): Promise<ArchiveRecord |
     driveFileId: drive.fileId,
     driveFileName: drive.fileName,
     mimeType: media?.mimeType ?? '',
-    aiSummary: analysis.summary
+    aiSummary: analysis.summary,
+    topicId: topic.topicId,
+    topicTitle: topic.topicTitle,
+    topicSummary: topic.topicSummary,
+    topicConfidence: topic.topicConfidence
   };
 }
 

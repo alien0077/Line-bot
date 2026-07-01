@@ -16,6 +16,8 @@ describe('dashboard API', () => {
     expect(response.body.todayCount).toBeGreaterThanOrEqual(1);
     expect(response.body.storageMode).toBe('memory');
     expect(response.body.groupCounts['示範群組']).toBeGreaterThanOrEqual(1);
+    expect(response.body.topicCounts['本機示範']).toBeGreaterThanOrEqual(1);
+    expect(response.body.topics[0].topicTitle).toBe('本機示範');
   });
 
   it('protects admin records with a password', async () => {
@@ -30,6 +32,8 @@ describe('dashboard API', () => {
     const records = await request(app).get('/api/admin/records').set('Cookie', cookie).expect(200);
     expect(records.body.records.length).toBeGreaterThanOrEqual(1);
     expect(records.body.groups[0].groupName).toBe('示範群組');
+    expect(records.body.topics[0].topicTitle).toBe('本機示範');
     expect(records.body.records[0].groupName).toBe('示範群組');
+    expect(records.body.records[0].topicTitle).toBe('本機示範');
   });
 });

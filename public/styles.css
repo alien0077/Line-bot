@@ -178,17 +178,35 @@ select {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.recent-list {
+.recent-list,
+.topic-list {
   display: grid;
   gap: 10px;
 }
 
-.recent-item {
+.recent-item,
+.topic-item {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px;
   display: grid;
   gap: 6px;
+}
+
+.topic-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.topic-title-row .chip {
+  white-space: nowrap;
+}
+
+.topic-item p {
+  margin: 0;
+  color: var(--text);
 }
 
 .recent-meta {

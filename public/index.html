@@ -48,6 +48,10 @@
           <div id="groupCounts" class="chips"></div>
         </div>
         <div class="panel">
+          <h2>主題統計</h2>
+          <div id="topicCounts" class="chips"></div>
+        </div>
+        <div class="panel">
           <h2>類型統計</h2>
           <div id="typeCounts" class="chips"></div>
         </div>
@@ -55,6 +59,11 @@
           <h2>分類統計</h2>
           <div id="categoryCounts" class="chips"></div>
         </div>
+      </section>
+
+      <section class="panel">
+        <h2>主題討論串</h2>
+        <div id="topicList" class="topic-list"></div>
       </section>
 
       <section class="panel">
@@ -76,6 +85,9 @@
           <select id="groupFilter">
             <option value="">全部群組</option>
           </select>
+          <select id="topicFilter">
+            <option value="">全部主題</option>
+          </select>
           <select id="typeFilter">
             <option value="">全部類型</option>
             <option value="text">文字</option>
@@ -96,6 +108,7 @@
               <tr>
                 <th>時間</th>
                 <th>群組</th>
+                <th>主題</th>
                 <th>類型</th>
                 <th>分類</th>
                 <th>內容</th>
