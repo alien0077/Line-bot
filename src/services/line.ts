@@ -38,6 +38,12 @@ function extensionFromMime(mimeType: string): string {
   if (mimeType.includes('png')) return 'png';
   if (mimeType.includes('jpeg') || mimeType.includes('jpg')) return 'jpg';
   if (mimeType.includes('gif')) return 'gif';
+  if (mimeType.includes('mp4')) return 'mp4';
+  if (mimeType.includes('quicktime')) return 'mov';
+  if (mimeType.includes('webm')) return 'webm';
+  if (mimeType.includes('mpeg')) return 'mp3';
+  if (mimeType.includes('wav')) return 'wav';
+  if (mimeType.includes('ogg')) return 'ogg';
   if (mimeType.includes('pdf')) return 'pdf';
   return 'bin';
 }

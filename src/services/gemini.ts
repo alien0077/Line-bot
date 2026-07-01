@@ -2,7 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { config } from '../config.js';
 import type { AnalysisResult, MessageCategory } from '../types.js';
 
-const categories: MessageCategory[] = ['公告', '待辦', '問題', '檔案', '圖片', '閒聊', '其他'];
+const categories: MessageCategory[] = ['公告', '待辦', '問題', '檔案', '圖片', '影片', '音訊', '閒聊', '其他'];
 
 let dailyKey = '';
 let dailyCount = 0;
@@ -19,7 +19,7 @@ function localAnalyze(text: string, fallbackCategory: MessageCategory = '其他'
   if (/請|待辦|todo|deadline|期限|記得|麻煩/.test(lower)) category = '待辦';
   else if (/[?？]|請問|怎麼|如何|為什麼/.test(trimmed)) category = '問題';
   else if (/公告|通知|重要|會議|發布/.test(trimmed)) category = '公告';
-  else if (fallbackCategory === '圖片' || fallbackCategory === '檔案') category = fallbackCategory;
+  else if (['圖片', '檔案', '影片', '音訊'].includes(fallbackCategory)) category = fallbackCategory;
   else if (trimmed) category = '閒聊';
 
   return {

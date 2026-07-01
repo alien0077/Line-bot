@@ -14,6 +14,8 @@ export const webhookRouter = Router();
 function baseCategory(messageType: ArchiveRecord['messageType']): MessageCategory {
   if (messageType === 'image') return '圖片';
   if (messageType === 'file') return '檔案';
+  if (messageType === 'video') return '影片';
+  if (messageType === 'audio') return '音訊';
   return '其他';
 }
 

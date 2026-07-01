@@ -6,7 +6,7 @@ import { HttpError } from '../utils/httpError.js';
 import { safeEqual } from '../utils/hash.js';
 
 const cookieName = 'line_dashboard_session';
-const maxAgeSeconds = 8 * 60 * 60;
+const maxAgeSeconds = Math.max(1, Math.round(config.DASHBOARD_SESSION_DAYS)) * 24 * 60 * 60;
 
 function sign(payload: string): string {
   return createHmac('sha256', config.SESSION_SECRET).update(payload).digest('base64url');

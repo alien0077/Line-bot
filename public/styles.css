@@ -250,6 +250,15 @@ select {
   border: 1px solid var(--line);
 }
 
+.media-video {
+  width: min(280px, 100%);
+  height: auto;
+}
+
+.media-audio {
+  width: min(320px, 100%);
+}
+
 .file-link {
   color: var(--accent-dark);
   font-weight: 700;
@@ -277,5 +286,52 @@ select {
   input,
   select {
     width: 100%;
+  }
+
+  .table-wrap {
+    overflow-x: visible;
+  }
+
+  .records-table {
+    display: block;
+    min-width: 0;
+  }
+
+  .records-table thead {
+    display: none;
+  }
+
+  .records-table tbody,
+  .records-table tr,
+  .records-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .records-table tr {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    padding: 10px;
+  }
+
+  .records-table td {
+    border-bottom: 0;
+    padding: 8px 0;
+    word-break: break-word;
+  }
+
+  .records-table td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 3px;
+  }
+
+  .media-preview {
+    max-width: 100%;
+    max-height: 260px;
   }
 }

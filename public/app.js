@@ -92,10 +92,16 @@ async function login(event) {
     adminEls.message.textContent = '登入失敗，請確認管理密碼。';
     return;
   }
+  setAdminAuthenticated(true);
   adminEls.message.textContent = '已登入，可查看完整紀錄。';
-  adminEls.tools.classList.remove('hidden');
-  adminEls.table.classList.remove('hidden');
   await loadRecords();
+}
+
+function setAdminAuthenticated(isAuthenticated) {
+  adminEls.loginForm.classList.toggle('hidden', isAuthenticated);
+  adminEls.tools.classList.toggle('hidden', !isAuthenticated);
+  adminEls.table.classList.toggle('hidden', !isAuthenticated);
+  if (isAuthenticated) adminEls.password.value = '';
 }
 
 function renderGroupOptions(groups, selectedGroupId) {
@@ -109,7 +115,7 @@ function renderGroupOptions(groups, selectedGroupId) {
   adminEls.group.innerHTML = options.join('');
 }
 
-async function loadRecords() {
+async function loadRecords(options = {}) {
   const params = new URLSearchParams();
   const selectedGroupId = adminEls.group.value;
   if (adminEls.search.value) params.set('search', adminEls.search.value);
@@ -117,25 +123,30 @@ async function loadRecords() {
   if (adminEls.type.value) params.set('type', adminEls.type.value);
   const response = await fetch(`/api/admin/records?${params.toString()}`);
   if (!response.ok) {
-    adminEls.message.textContent = '讀取完整紀錄失敗，可能需要重新登入。';
-    return;
+    setAdminAuthenticated(false);
+    if (!options.silent) {
+      adminEls.message.textContent = response.status === 401 ? '登入已過期，請重新輸入管理密碼。' : '讀取完整紀錄失敗。';
+    }
+    return false;
   }
   const payload = await response.json();
+  setAdminAuthenticated(true);
   renderGroupOptions(payload.groups, selectedGroupId);
   adminEls.message.textContent = `共 ${payload.count} 筆符合條件的紀錄。`;
   adminEls.tbody.innerHTML = payload.records.map(renderRecordRow).join('');
+  return true;
 }
 
 function renderRecordRow(record) {
   return `
     <tr>
-      <td>${formatTime(record.timestamp)}</td>
-      <td><strong>${escapeHtml(record.groupName)}</strong><br /><span class="muted small-text">${escapeHtml(record.groupId)}</span></td>
-      <td>${escapeHtml(record.messageType)}</td>
-      <td>${escapeHtml(record.category)}</td>
-      <td>${escapeHtml(record.content)}</td>
-      <td>${escapeHtml(record.aiSummary)}</td>
-      <td>${renderMedia(record)}</td>
+      <td data-label="時間">${formatTime(record.timestamp)}</td>
+      <td data-label="群組"><strong>${escapeHtml(record.groupName)}</strong><br /><span class="muted small-text">${escapeHtml(record.groupId)}</span></td>
+      <td data-label="類型">${escapeHtml(record.messageType)}</td>
+      <td data-label="分類">${escapeHtml(record.category)}</td>
+      <td data-label="內容">${escapeHtml(record.content || record.driveFileName || '非文字訊息')}</td>
+      <td data-label="摘要">${escapeHtml(record.aiSummary)}</td>
+      <td data-label="媒體">${renderMedia(record)}</td>
     </tr>
   `;
 }
@@ -144,6 +155,12 @@ function renderMedia(record) {
   if (!record.mediaProxyUrl) return escapeHtml(record.driveFileName || '');
   if (record.mimeType?.startsWith('image/')) {
     return `<img class="media-preview" src="${record.mediaProxyUrl}" alt="${escapeHtml(record.driveFileName)}" loading="lazy" />`;
+  }
+  if (record.mimeType?.startsWith('video/')) {
+    return `<video class="media-preview media-video" src="${record.mediaProxyUrl}" controls preload="metadata"></video>`;
+  }
+  if (record.mimeType?.startsWith('audio/')) {
+    return `<audio class="media-audio" src="${record.mediaProxyUrl}" controls preload="metadata"></audio>`;
   }
   return `<a class="file-link" href="${record.mediaProxyUrl}" target="_blank" rel="noreferrer">${escapeHtml(record.driveFileName || '開啟檔案')}</a>`;
 }
@@ -157,4 +174,7 @@ adminEls.type.addEventListener('change', loadRecords);
 loadSummary().catch((error) => {
   console.error(error);
   summaryEls.summaryList.innerHTML = '<li>讀取摘要失敗，請確認後端服務是否啟動。</li>';
+});
+loadRecords({ silent: true }).catch((error) => {
+  console.error(error);
 });

@@ -6,6 +6,8 @@ export type MessageCategory =
   | '問題'
   | '檔案'
   | '圖片'
+  | '影片'
+  | '音訊'
   | '閒聊'
   | '其他';
 

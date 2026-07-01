@@ -8,6 +8,7 @@ const envSchema = z.object({
   APP_BASE_URL: z.string().default('http://localhost:8080'),
   DASHBOARD_PASSWORD: z.string().default('change-me'),
   SESSION_SECRET: z.string().default('dev-session-secret-change-me'),
+  DASHBOARD_SESSION_DAYS: z.coerce.number().default(30),
   LINE_CHANNEL_SECRET: z.string().default(''),
   LINE_CHANNEL_ACCESS_TOKEN: z.string().default(''),
   ALLOW_UNSIGNED_WEBHOOKS: z.coerce.boolean().default(true),
