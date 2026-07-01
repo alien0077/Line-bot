@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, type GenerateContentConfig } from '@google/genai';
 import { config } from '../config.js';
 import type { AnalysisResult, ArchiveRecordView, MessageCategory } from '../types.js';
 import { listRecordViews } from './store.js';
@@ -7,6 +7,26 @@ const categories: MessageCategory[] = ['公告', '待辦', '問題', '檔案', '
 const maxLineReplyLength = 1500;
 const geminiMaxAttempts = 3;
 const transientGeminiStatuses = new Set([429, 500, 502, 503, 504]);
+const groupContextKeywords = [
+  '群組',
+  '群裡',
+  '群內',
+  '本群',
+  '這個群',
+  '討論',
+  '討論串',
+  '聊天紀錄',
+  '紀錄',
+  '訊息',
+  '大家',
+  '剛剛',
+  '剛才',
+  '前面',
+  '上面',
+  '待辦',
+  '誰說',
+  '誰提'
+];
 
 let dailyKey = '';
 let dailyCount = 0;
@@ -68,7 +88,7 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-async function generateGeminiText(contents: string): Promise<string> {
+async function generateGeminiText(contents: string, generationConfig: GenerateContentConfig = {}): Promise<string> {
   if (!canUseGemini()) {
     throw new Error('Gemini is not configured or daily limit has been reached');
   }
@@ -81,7 +101,8 @@ async function generateGeminiText(contents: string): Promise<string> {
     try {
       const response = await ai.models.generateContent({
         model: config.GEMINI_MODEL,
-        contents
+        contents,
+        config: generationConfig
       });
       return response.text ?? '';
     } catch (error) {
@@ -171,6 +192,30 @@ function trimLineReply(text: string): string {
   return `${cleaned.slice(0, maxLineReplyLength - 1).trim()}…`;
 }
 
+function shouldUseGroupContext(question: string): boolean {
+  const normalized = question.toLowerCase();
+  return groupContextKeywords.some((keyword) => normalized.includes(keyword.toLowerCase()));
+}
+
+function googleSearchConfig(): GenerateContentConfig {
+  if (!config.GEMINI_GOOGLE_SEARCH_ENABLED) return {};
+  return {
+    tools: [{ googleSearch: {} }]
+  };
+}
+
+function buildGeneralAnswerPrompt(question: string): string {
+  return [
+    '你是 LINE 群組中的助理。請使用繁體中文回答。',
+    '這不是在詢問群組聊天紀錄時，請不要提「群組紀錄不足」。',
+    '如果問題涉及今天、日期、天氣、停班停課、假期、新聞、票價、營業時間、政策或其他可能變動的資訊，請以 Google Search grounding 取得的最新資料為準。',
+    '如果搜尋結果不足以確認，請明確說無法確認，不要猜。',
+    '回答保持精簡、可直接貼在 LINE 群組中。',
+    '',
+    `使用者問題：${question}`
+  ].join('\n');
+}
+
 export async function answerGroupQuestion(question: string, groupId: string): Promise<string> {
   const trimmedQuestion = question.trim();
   if (!trimmedQuestion) {
@@ -181,6 +226,11 @@ export async function answerGroupQuestion(question: string, groupId: string): Pr
   }
   if (!canUseGemini()) {
     return '今天的 Gemini 使用量已達上限，晚點再問我會比較穩。';
+  }
+
+  if (!shouldUseGroupContext(trimmedQuestion)) {
+    const answer = await generateGeminiText(buildGeneralAnswerPrompt(trimmedQuestion), googleSearchConfig());
+    return trimLineReply(answer || '我暫時沒有查到可靠答案，請再問一次。');
   }
 
   const records = await listRecordViews();

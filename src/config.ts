@@ -29,6 +29,7 @@ const envSchema = z.object({
   USER_HASH_SALT: z.string().default('line-dashboard-dev-salt'),
   GEMINI_API_KEY: z.string().default(''),
   GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
+  GEMINI_GOOGLE_SEARCH_ENABLED: envBoolean.default(true),
   GEMINI_TEXT_ANALYSIS_ENABLED: envBoolean.default(true),
   GEMINI_DAILY_LIMIT: z.coerce.number().default(50),
   LINE_BOT_QA_ENABLED: envBoolean.default(true),
