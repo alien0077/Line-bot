@@ -22,7 +22,7 @@ vi.mock('../src/services/store.js', () => ({
   listRecordViews: storeMocks.listRecordViews
 }));
 
-async function loadGemini() {
+async function loadGemini(env: Record<string, string> = {}) {
   vi.resetModules();
   vi.unstubAllEnvs();
   vi.stubEnv('NODE_ENV', 'test');
@@ -30,6 +30,9 @@ async function loadGemini() {
   vi.stubEnv('GEMINI_MODEL', 'gemini-2.5-flash');
   vi.stubEnv('GEMINI_DAILY_LIMIT', '50');
   vi.stubEnv('GEMINI_GOOGLE_SEARCH_ENABLED', 'true');
+  for (const [key, value] of Object.entries(env)) {
+    vi.stubEnv(key, value);
+  }
 
   const module = await import('../src/services/gemini.js');
   return module;
@@ -39,6 +42,7 @@ describe('Gemini group QA routing', () => {
   beforeEach(() => {
     genaiMocks.generateContent.mockReset();
     storeMocks.listRecordViews.mockReset();
+    vi.unstubAllGlobals();
     genaiMocks.generateContent.mockResolvedValue({ text: '測試回答' });
     storeMocks.listRecordViews.mockResolvedValue([]);
   });
@@ -93,7 +97,36 @@ describe('Gemini group QA routing', () => {
 
     const answer = await answerGroupQuestion('今天台南天氣如何？', 'group-1');
 
-    expect(answer).toContain('Gemini API 今日免費額度已用完');
+    expect(answer).toContain('Gemini 今日免費額度可能已用完');
     expect(genaiMocks.generateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to OpenRouter when Gemini quota is exhausted', async () => {
+    const { answerGroupQuestion } = await loadGemini({
+      OPENROUTER_API_KEY: 'openrouter-key',
+      OPENROUTER_MODEL: 'openrouter/auto'
+    });
+    const quotaError = Object.assign(new Error('RESOURCE_EXHAUSTED: free_tier_requests quota exceeded'), {
+      status: 429
+    });
+    genaiMocks.generateContent.mockRejectedValue(quotaError);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: 'OpenRouter 備援回答' } }]
+    }), { status: 200 })));
+
+    const answer = await answerGroupQuestion('今天台南天氣如何？', 'group-1');
+
+    expect(answer).toBe('OpenRouter 備援回答');
+    expect(fetch).toHaveBeenCalledWith(
+      'https://openrouter.ai/api/v1/chat/completions',
+      expect.objectContaining({
+        method: 'POST'
+      })
+    );
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      model: 'openrouter/auto',
+      plugins: [{ id: 'web' }]
+    });
   });
 });

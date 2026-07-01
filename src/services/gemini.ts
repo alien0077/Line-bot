@@ -38,6 +38,13 @@ type GeminiCallOptions = {
   forceLocal?: boolean;
 };
 
+type AiProvider = 'gemini' | 'openrouter' | 'nvidia';
+
+type AiGenerateOptions = {
+  geminiConfig?: GenerateContentConfig;
+  openRouterWebSearch?: boolean;
+};
+
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -123,7 +130,7 @@ function blockGeminiUntilNextUtcDay(): void {
 }
 
 function geminiLimitMessage(): string {
-  return 'Gemini API 今日免費額度已用完，所以我現在無法查資料或產生 AI 回答。明天額度重置後再問我會比較穩。';
+  return '目前 AI 供應商暫時無法產生回答。Gemini 今日免費額度可能已用完，備援模型也沒有成功回應，請稍後再問我一次。';
 }
 
 function sleep(ms: number): Promise<void> {
@@ -172,6 +179,119 @@ async function generateGeminiText(contents: string, generationConfig: GenerateCo
   }
 
   throw lastError;
+}
+
+function normalizeProvider(value: string): AiProvider | undefined {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'gemini' || normalized === 'openrouter' || normalized === 'nvidia') return normalized;
+  return undefined;
+}
+
+function configuredProviderOrder(): AiProvider[] {
+  const order: AiProvider[] = [];
+  const primary = normalizeProvider(config.AI_PROVIDER) ?? 'gemini';
+  const fallbacks = config.AI_FALLBACK_PROVIDERS
+    .split(',')
+    .map((provider) => normalizeProvider(provider))
+    .filter((provider): provider is AiProvider => Boolean(provider));
+
+  for (const provider of [primary, ...fallbacks]) {
+    if (!order.includes(provider)) order.push(provider);
+  }
+  return order;
+}
+
+function canUseProvider(provider: AiProvider): boolean {
+  if (provider === 'gemini') return canUseGemini();
+  if (provider === 'openrouter') return Boolean(config.OPENROUTER_API_KEY);
+  return Boolean(config.NVIDIA_API_KEY);
+}
+
+function hasAnswerProvider(): boolean {
+  return configuredProviderOrder().some((provider) => canUseProvider(provider));
+}
+
+function makeHttpError(provider: AiProvider, status: number, body: string): Error & { status: number; provider: AiProvider } {
+  const error = new Error(`${provider} API failed with ${status}: ${body.slice(0, 500)}`) as Error & {
+    status: number;
+    provider: AiProvider;
+  };
+  error.status = status;
+  error.provider = provider;
+  return error;
+}
+
+async function readChatCompletionResponse(provider: AiProvider, response: Response): Promise<string> {
+  const bodyText = await response.text();
+  if (!response.ok) throw makeHttpError(provider, response.status, bodyText);
+  const parsed = JSON.parse(bodyText) as {
+    choices?: Array<{
+      message?: {
+        content?: unknown;
+      };
+    }>;
+  };
+  const content = parsed.choices?.[0]?.message?.content;
+  return typeof content === 'string' ? content : '';
+}
+
+async function generateOpenRouterText(contents: string, options: AiGenerateOptions = {}): Promise<string> {
+  const plugins = options.openRouterWebSearch && config.OPENROUTER_WEB_SEARCH_ENABLED
+    ? [{ id: 'web' }]
+    : undefined;
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': config.APP_BASE_URL,
+      'X-OpenRouter-Title': 'LINE Group Archive Bot'
+    },
+    body: JSON.stringify({
+      model: config.OPENROUTER_MODEL,
+      messages: [{ role: 'user', content: contents }],
+      max_tokens: 900,
+      temperature: 0.3,
+      plugins
+    })
+  });
+  return readChatCompletionResponse('openrouter', response);
+}
+
+async function generateNvidiaText(contents: string): Promise<string> {
+  const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.NVIDIA_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: config.NVIDIA_MODEL,
+      messages: [{ role: 'user', content: contents }],
+      max_tokens: 900,
+      temperature: 0.3
+    })
+  });
+  return readChatCompletionResponse('nvidia', response);
+}
+
+async function generateAnswerText(contents: string, options: AiGenerateOptions = {}): Promise<string> {
+  let lastError: unknown;
+  for (const provider of configuredProviderOrder()) {
+    if (!canUseProvider(provider)) continue;
+    try {
+      if (provider === 'gemini') return await generateGeminiText(contents, options.geminiConfig ?? {});
+      if (provider === 'openrouter') return await generateOpenRouterText(contents, options);
+      return await generateNvidiaText(contents);
+    } catch (error) {
+      lastError = error;
+      if (provider === 'gemini' && isGeminiQuotaError(error)) {
+        blockGeminiUntilNextUtcDay();
+      }
+      console.warn(`${provider} answer generation failed, trying next provider`, error);
+    }
+  }
+  throw lastError ?? new Error('No AI provider is configured for answering');
 }
 
 export function getAnalysisMode(): 'gemini' | 'local' {
@@ -369,16 +489,16 @@ export async function answerGroupQuestion(question: string, groupId: string): Pr
   if (!trimmedQuestion) {
     return '你可以在 @ 我後面直接輸入想問的問題，我會優先參考這個群組的歸檔紀錄回答。';
   }
-  if (!config.GEMINI_API_KEY) {
-    return '目前尚未設定 Gemini API key，所以我還不能回答問題。';
-  }
-  if (!canUseGemini()) {
-    return geminiLimitMessage();
+  if (!hasAnswerProvider()) {
+    return '目前尚未設定可用的 AI provider，所以我還不能回答問題。';
   }
 
   try {
     if (!shouldUseGroupContext(trimmedQuestion)) {
-      const answer = await generateGeminiText(buildGeneralAnswerPrompt(trimmedQuestion), googleSearchConfig());
+      const answer = await generateAnswerText(buildGeneralAnswerPrompt(trimmedQuestion), {
+        geminiConfig: googleSearchConfig(),
+        openRouterWebSearch: true
+      });
       return trimLineReply(answer || '我暫時沒有查到可靠答案，請再問一次。');
     }
 
@@ -396,7 +516,7 @@ export async function answerGroupQuestion(question: string, groupId: string): Pr
       context
     ].join('\n');
 
-    const answer = await generateGeminiText(prompt);
+    const answer = await generateAnswerText(prompt);
     return trimLineReply(answer || '我暫時沒有產生到回答，請再問一次。');
   } catch (error) {
     if (isGeminiQuotaError(error)) {

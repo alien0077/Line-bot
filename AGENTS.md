@@ -140,6 +140,8 @@ ALLOW_UNSIGNED_WEBHOOKS=false
 | `SESSION_SECRET` | `SESSION_SECRET` | 隨機長字串，例如 `openssl rand -base64 32` | 簽署登入 cookie，防止偽造 session |
 | `USER_HASH_SALT` | `USER_HASH_SALT` | 隨機長字串，例如 `openssl rand -base64 32` | 將 LINE userId 雜湊後寫入 Sheets，避免保存原始 userId |
 | `GEMINI_API_KEY` | `GEMINI_API_KEY` | Google AI Studio 建立的 Gemini API key | 文字分類與摘要 |
+| `OPENROUTER_API_KEY` | `OPENROUTER_API_KEY` | OpenRouter API key | Gemini 失敗或額度用完時作為 @bot 問答備援 |
+| `NVIDIA_API_KEY` | `NVIDIA_API_KEY` | NVIDIA NIM API key | OpenRouter 也失敗時作為 @bot 問答最後備援 |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | `GOOGLE_SERVICE_ACCOUNT_JSON` | Google service account JSON 原文，或 base64 後的 JSON | 讓程式讀寫 Google Sheets / Drive |
 | `LINE_CHANNEL_SECRET` | `LINE_CHANNEL_SECRET` | LINE Developers Messaging API channel secret | 驗證 Webhook 簽章 |
 | `LINE_CHANNEL_ACCESS_TOKEN` | `LINE_CHANNEL_ACCESS_TOKEN` | LINE Developers Messaging API channel access token | 下載 LINE 圖片與檔案內容 |
@@ -213,6 +215,7 @@ Cloud Run 必須允許未驗證外部請求，因為 LINE 會直接呼叫 webhoo
 - 預設模型由 `GEMINI_MODEL` 控制，目前 `.env.example` 是 `gemini-2.5-flash`
 - `GEMINI_DAILY_LIMIT` 控制每個服務實例每日文字分析上限
 - 若要節省額度，可設 `GEMINI_TEXT_ANALYSIS_ENABLED=false`，程式會退回本機規則摘要與分類
+- @bot 問答可用 `AI_PROVIDER=gemini` 與 `AI_FALLBACK_PROVIDERS=openrouter,nvidia`，在 Gemini 額度或暫時錯誤時改走 OpenRouter/NVIDIA。
 
 ## 部署流程
 
