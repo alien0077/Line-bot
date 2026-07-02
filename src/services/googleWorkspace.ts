@@ -1,9 +1,10 @@
 import { Readable } from 'node:stream';
 import { google, type drive_v3, type sheets_v4 } from 'googleapis';
-import { config, hasDriveConfig, hasGoogleWorkspaceConfig } from '../config.js';
+import { config, hasDriveConfig, hasDriveOAuthConfig, hasGoogleWorkspaceConfig } from '../config.js';
 import type { ArchiveRecord, MediaUpload } from '../types.js';
+import { formatDateFolder } from '../utils/dates.js';
 
-const scopes = [
+const serviceAccountScopes = [
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/drive.file'
 ];
@@ -40,25 +41,37 @@ function parseServiceAccountJson(): Record<string, unknown> | undefined {
   return JSON.parse(decoded) as Record<string, unknown>;
 }
 
-async function getAuth() {
+async function getServiceAccountAuth() {
   const credentials = parseServiceAccountJson();
   return new google.auth.GoogleAuth({
     credentials,
     keyFile: credentials ? undefined : config.GOOGLE_APPLICATION_CREDENTIALS || undefined,
-    scopes
+    scopes: serviceAccountScopes
   });
+}
+
+function getDriveOAuthClient() {
+  const client = new google.auth.OAuth2(
+    config.GOOGLE_DRIVE_OAUTH_CLIENT_ID,
+    config.GOOGLE_DRIVE_OAUTH_CLIENT_SECRET
+  );
+  client.setCredentials({
+    refresh_token: config.GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN
+  });
+  return client;
 }
 
 async function getSheets(): Promise<sheets_v4.Sheets> {
   if (!sheetsClient) {
-    sheetsClient = google.sheets({ version: 'v4', auth: await getAuth() });
+    sheetsClient = google.sheets({ version: 'v4', auth: await getServiceAccountAuth() });
   }
   return sheetsClient;
 }
 
 async function getDrive(): Promise<drive_v3.Drive> {
   if (!driveClient) {
-    driveClient = google.drive({ version: 'v3', auth: await getAuth() });
+    const auth = hasDriveOAuthConfig() ? getDriveOAuthClient() : await getServiceAccountAuth();
+    driveClient = google.drive({ version: 'v3', auth });
   }
   return driveClient;
 }
@@ -176,17 +189,50 @@ export async function readGroupAliases(): Promise<Record<string, string>> {
   return aliases;
 }
 
+async function findFolder(name: string, parentId: string): Promise<string | null> {
+  const drive = await getDrive();
+  const response = await drive.files.list({
+    q: [
+      `name = '${name.replace(/'/g, "\\'")}'`,
+      "mimeType = 'application/vnd.google-apps.folder'",
+      `'${parentId}' in parents`,
+      'trashed = false'
+    ].join(' and '),
+    fields: 'files(id, name)',
+    pageSize: 1
+  });
+  return response.data.files?.[0]?.id ?? null;
+}
+
+async function ensureFolder(name: string, parentId: string): Promise<string> {
+  const existing = await findFolder(name, parentId);
+  if (existing) return existing;
+  const drive = await getDrive();
+  const response = await drive.files.create({
+    requestBody: {
+      name,
+      mimeType: 'application/vnd.google-apps.folder',
+      parents: [parentId]
+    },
+    fields: 'id'
+  });
+  if (!response.data.id) throw new Error(`建立 Drive 資料夾失敗：${name}`);
+  return response.data.id;
+}
+
 export async function uploadMediaToDrive(groupId: string, messageId: string, media: MediaUpload): Promise<{ fileId: string; fileName: string }> {
   if (!hasDriveConfig()) {
     return { fileId: '', fileName: media.fileName };
   }
 
+  const dateFolderId = await ensureFolder(formatDateFolder(), config.GOOGLE_DRIVE_FOLDER_ID);
+  const groupFolderId = await ensureFolder(groupId, dateFolderId);
   const drive = await getDrive();
   const fileName = `${messageId}-${media.fileName}`;
   const response = await drive.files.create({
     requestBody: {
       name: fileName,
-      parents: [config.GOOGLE_DRIVE_FOLDER_ID]
+      parents: [groupFolderId]
     },
     media: {
       mimeType: media.mimeType,

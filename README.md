@@ -51,12 +51,16 @@ npm run sample:webhook
 1. 建立一份 Google Sheets，工作表名稱建議 `Records`。
 2. 建立一個 Google Drive 資料夾存放媒體。
 3. 建立 Service Account，取得 JSON key。
-4. 把 Sheets 與 Drive 資料夾分享給 service account email。
-5. 設定環境變數：
+4. 把 Sheets 分享給 service account email。
+5. 若要讓媒體扣你的個人 Google Drive 配額，建立 OAuth client 並以 `https://www.googleapis.com/auth/drive` scope 取得 refresh token。
+6. 設定環境變數：
    - `GOOGLE_SHEETS_SPREADSHEET_ID`
    - `GOOGLE_SHEETS_SHEET_NAME=Records`
    - `GOOGLE_GROUPS_SHEET_NAME=Groups`
    - `GOOGLE_DRIVE_FOLDER_ID`
+   - `GOOGLE_DRIVE_OAUTH_CLIENT_ID`
+   - `GOOGLE_DRIVE_OAUTH_CLIENT_SECRET`
+   - `GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN`
    - `GOOGLE_SERVICE_ACCOUNT_JSON`，可放原始 JSON 或 base64 後的 JSON。
 
 ### 多群組與媒體分群
@@ -76,13 +80,13 @@ npm run sample:webhook
 
 Dashboard 會用 `displayName` 顯示群組統計、最近項目與完整紀錄，也可依群組篩選。
 
-圖片與檔案會直接存進 `GOOGLE_DRIVE_FOLDER_ID` 指定的 Drive 資料夾：
+圖片與檔案會存進 `GOOGLE_DRIVE_FOLDER_ID` 指定的 Drive 資料夾，並依下列結構分群：
 
 ```text
-messageId-原始檔名
+日期資料夾 / groupId / messageId-原始檔名
 ```
 
-這是個人 Drive 的備案模式，避免 service account 在個人 Drive 內建立子資料夾時觸發儲存配額限制。群組分辨仍保存在 Sheets 與 Dashboard 的 `groupId` 欄位。
+Drive 上傳優先使用 `GOOGLE_DRIVE_OAUTH_CLIENT_ID`、`GOOGLE_DRIVE_OAUTH_CLIENT_SECRET`、`GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN` 代表你的個人 Google 帳號寫入，因此檔案會扣你的 Google Drive 配額。若三個 OAuth 設定沒有全部提供，程式會退回 service account。
 
 ### 4. AI Provider
 
@@ -110,6 +114,9 @@ messageId-原始檔名
 | `GOOGLE_SHEETS_SHEET_NAME` | 紀錄分頁名稱，預設 `Records` |
 | `GOOGLE_GROUPS_SHEET_NAME` | 群組別名分頁名稱，預設 `Groups` |
 | `GOOGLE_DRIVE_FOLDER_ID` | 儲存媒體的 Drive folder id |
+| `GOOGLE_DRIVE_OAUTH_CLIENT_ID` | 個人 Drive OAuth client id |
+| `GOOGLE_DRIVE_OAUTH_CLIENT_SECRET` | 個人 Drive OAuth client secret |
+| `GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN` | 個人 Drive OAuth refresh token |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | service account JSON 或 base64 JSON |
 | `USER_HASH_SALT` | LINE userId 匿名化雜湊用 salt |
 | `GEMINI_API_KEY` | Gemini API key |
@@ -162,6 +169,9 @@ messageId-原始檔名
 | `GEMINI_API_KEY` | Gemini API key |
 | `OPENROUTER_API_KEY` | OpenRouter API key |
 | `NVIDIA_API_KEY` | NVIDIA NIM API key |
+| `GOOGLE_DRIVE_OAUTH_CLIENT_ID` | 個人 Drive OAuth client id |
+| `GOOGLE_DRIVE_OAUTH_CLIENT_SECRET` | 個人 Drive OAuth client secret |
+| `GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN` | 個人 Drive OAuth refresh token |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Google service account JSON |
 | `LINE_CHANNEL_SECRET` | LINE Webhook 簽章驗證 |
 | `LINE_CHANNEL_ACCESS_TOKEN` | 下載 LINE 圖片/檔案內容 |

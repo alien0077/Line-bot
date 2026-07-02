@@ -142,6 +142,9 @@ ALLOW_UNSIGNED_WEBHOOKS=false
 | `GEMINI_API_KEY` | `GEMINI_API_KEY` | Google AI Studio 建立的 Gemini API key | 文字分類與摘要 |
 | `OPENROUTER_API_KEY` | `OPENROUTER_API_KEY` | OpenRouter API key | Gemini 失敗或額度用完時作為 @bot 問答備援 |
 | `NVIDIA_API_KEY` | `NVIDIA_API_KEY` | NVIDIA NIM API key | OpenRouter 也失敗時作為 @bot 問答最後備援 |
+| `GOOGLE_DRIVE_OAUTH_CLIENT_ID` | `GOOGLE_DRIVE_OAUTH_CLIENT_ID` | Google Cloud OAuth client id | 讓 Drive 媒體上傳使用個人 Google 帳號配額 |
+| `GOOGLE_DRIVE_OAUTH_CLIENT_SECRET` | `GOOGLE_DRIVE_OAUTH_CLIENT_SECRET` | Google Cloud OAuth client secret | 搭配 refresh token 更新 Drive 存取權杖 |
+| `GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN` | `GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN` | 以個人 Google 帳號授權 `https://www.googleapis.com/auth/drive` scope 後取得的 refresh token | 讓 Cloud Run 可用個人 Drive quota 上傳媒體 |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | `GOOGLE_SERVICE_ACCOUNT_JSON` | Google service account JSON 原文，或 base64 後的 JSON | 讓程式讀寫 Google Sheets / Drive |
 | `LINE_CHANNEL_SECRET` | `LINE_CHANNEL_SECRET` | LINE Developers Messaging API channel secret | 驗證 Webhook 簽章 |
 | `LINE_CHANNEL_ACCESS_TOKEN` | `LINE_CHANNEL_ACCESS_TOKEN` | LINE Developers Messaging API channel access token | 下載 LINE 圖片與檔案內容 |
@@ -158,9 +161,9 @@ line-bot-collector@line-bot-backup-501005.iam.gserviceaccount.com
 
 這個 service account 需要：
 
-- 對上述 7 個 Secret Manager secrets 擁有 `roles/secretmanager.secretAccessor`
+- 對上述 Secret Manager secrets 擁有 `roles/secretmanager.secretAccessor`
 - 被 Google Sheets 分享為編輯者
-- 被 Google Drive 媒體資料夾分享為編輯者
+- 若未使用 Drive OAuth，需被 Google Drive 媒體資料夾分享為編輯者
 
 建議只對單一 secret 授權，不要直接在整個 project 層級授予所有 secrets 的讀取權限。
 
@@ -178,9 +181,9 @@ Google Sheets：
 Google Drive：
 
 - Folder ID 由 `GOOGLE_DRIVE_FOLDER_ID` 提供
-- 圖片/檔案目前採個人 Drive 備案模式，直接上傳到 `GOOGLE_DRIVE_FOLDER_ID` 指定的資料夾
-- 實際路徑是：messageId-原始檔名
-- 群組分辨仍保存在 Sheets 與 Dashboard 的 groupId，不依賴 Drive 子資料夾
+- 圖片/檔案優先使用 Drive OAuth 個人帳號上傳；若未設定 OAuth 三件套，才退回 service account
+- 實際路徑是：日期資料夾 / groupId / messageId-原始檔名
+- Drive 資料夾保留穩定的 groupId，不使用 displayName，避免日後改群組名稱時影響舊檔案路徑
 - Drive 檔案不需要公開分享
 - 管理頁媒體預覽由後端驗證登入後代理讀取
 

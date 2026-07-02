@@ -24,6 +24,9 @@ const envSchema = z.object({
   GOOGLE_SHEETS_SHEET_NAME: z.string().default('Records'),
   GOOGLE_GROUPS_SHEET_NAME: z.string().default('Groups'),
   GOOGLE_DRIVE_FOLDER_ID: z.string().default(''),
+  GOOGLE_DRIVE_OAUTH_CLIENT_ID: z.string().default(''),
+  GOOGLE_DRIVE_OAUTH_CLIENT_SECRET: z.string().default(''),
+  GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN: z.string().default(''),
   GOOGLE_SERVICE_ACCOUNT_JSON: z.string().default(''),
   GOOGLE_APPLICATION_CREDENTIALS: z.string().default(''),
   USER_HASH_SALT: z.string().default('line-dashboard-dev-salt'),
@@ -57,6 +60,14 @@ export function hasGoogleWorkspaceConfig(): boolean {
   );
 }
 
+export function hasDriveOAuthConfig(): boolean {
+  return Boolean(
+    config.GOOGLE_DRIVE_OAUTH_CLIENT_ID &&
+      config.GOOGLE_DRIVE_OAUTH_CLIENT_SECRET &&
+      config.GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN
+  );
+}
+
 export function hasDriveConfig(): boolean {
-  return Boolean(config.GOOGLE_DRIVE_FOLDER_ID && hasGoogleWorkspaceConfig());
+  return Boolean(config.GOOGLE_DRIVE_FOLDER_ID && (hasDriveOAuthConfig() || hasGoogleWorkspaceConfig()));
 }
