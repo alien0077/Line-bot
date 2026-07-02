@@ -76,13 +76,13 @@ npm run sample:webhook
 
 Dashboard 會用 `displayName` 顯示群組統計、最近項目與完整紀錄，也可依群組篩選。
 
-圖片與檔案會存進 `GOOGLE_DRIVE_FOLDER_ID` 指定的 Drive 資料夾，並依下列結構分群：
+圖片與檔案會直接存進 `GOOGLE_DRIVE_FOLDER_ID` 指定的 Drive 資料夾：
 
 ```text
-日期資料夾 / groupId / messageId-原始檔名
+messageId-原始檔名
 ```
 
-Drive 資料夾保留穩定的 `groupId`，避免你之後更改群組顯示名稱時影響既有檔案路徑。
+這是個人 Drive 的備案模式，避免 service account 在個人 Drive 內建立子資料夾時觸發儲存配額限制。群組分辨仍保存在 Sheets 與 Dashboard 的 `groupId` 欄位。
 
 ### 4. AI Provider
 

@@ -178,9 +178,9 @@ Google Sheets：
 Google Drive：
 
 - Folder ID 由 `GOOGLE_DRIVE_FOLDER_ID` 提供
-- 圖片/檔案會建立日期與群組資料夾後上傳
-- 實際路徑是：日期資料夾 / groupId / messageId-原始檔名
-- Drive 資料夾仍使用穩定的 groupId，不使用 displayName，避免日後改群組名稱時影響舊檔案路徑
+- 圖片/檔案目前採個人 Drive 備案模式，直接上傳到 `GOOGLE_DRIVE_FOLDER_ID` 指定的資料夾
+- 實際路徑是：messageId-原始檔名
+- 群組分辨仍保存在 Sheets 與 Dashboard 的 groupId，不依賴 Drive 子資料夾
 - Drive 檔案不需要公開分享
 - 管理頁媒體預覽由後端驗證登入後代理讀取
 
