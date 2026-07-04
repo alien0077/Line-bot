@@ -88,6 +88,35 @@ describe('Gemini group QA routing', () => {
     expect(genaiMocks.generateContent.mock.calls[0][0].contents).toContain('同群組歸檔紀錄');
   });
 
+  it('routes chat-content summary requests to group records', async () => {
+    const { answerGroupQuestion } = await loadGemini();
+    storeMocks.listRecordViews.mockResolvedValue([
+      {
+        timestamp: new Date().toISOString(),
+        groupId: 'group-1',
+        groupName: '測試群組',
+        messageType: 'text',
+        category: '閒聊',
+        content: '今天中午買鹹酥雞，晚上等垃圾車',
+        aiSummary: '中午買鹹酥雞，晚上等垃圾車',
+        driveFileName: '',
+        topicTitle: '日常安排'
+      }
+    ]);
+
+    await answerGroupQuestion('請摘要今天的聊天內容，依重要性由上而下，並分列出待處理事項', 'group-1');
+
+    expect(storeMocks.listRecordViews).toHaveBeenCalledTimes(1);
+    expect(genaiMocks.generateContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: {}
+      })
+    );
+    const prompt = genaiMocks.generateContent.mock.calls[0][0].contents;
+    expect(prompt).toContain('同群組歸檔紀錄');
+    expect(prompt).toContain('今天中午買鹹酥雞，晚上等垃圾車');
+  });
+
   it('filters archived bot mention commands out of group QA context', async () => {
     const { answerGroupQuestion } = await loadGemini();
     const now = new Date().toISOString();

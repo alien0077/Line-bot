@@ -584,7 +584,10 @@ function trimLineReply(text: string): string {
 
 function shouldUseGroupContext(question: string): boolean {
   const normalized = question.toLowerCase();
-  return groupContextKeywords.some((keyword) => normalized.includes(keyword.toLowerCase()));
+  if (groupContextKeywords.some((keyword) => normalized.includes(keyword.toLowerCase()))) return true;
+  const asksForSummary = /摘要|整理|總結|重點|重要性|待處理|待辦|提醒/.test(normalized);
+  const targetsChatContext = /聊天|群組|群裡|群內|本群|訊息|紀錄/.test(normalized);
+  return asksForSummary && targetsChatContext;
 }
 
 function googleSearchConfig(): GenerateContentConfig {
