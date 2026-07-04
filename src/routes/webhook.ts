@@ -117,9 +117,9 @@ webhookRouter.post('/line', async (req, res) => {
   for (const event of events) {
     const record = await recordFromEvent(event);
     if (!record) continue;
+    if (await replyToMention(event)) replied += 1;
     await addRecord(record);
     stored.push(record.id);
-    if (await replyToMention(event)) replied += 1;
   }
 
   res.json({

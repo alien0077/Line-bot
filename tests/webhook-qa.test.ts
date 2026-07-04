@@ -7,11 +7,19 @@ const geminiMocks = vi.hoisted(() => ({
   classifyTopic: vi.fn()
 }));
 
+const storeMocks = vi.hoisted(() => ({
+  addRecord: vi.fn()
+}));
+
 vi.mock('../src/services/gemini.js', () => ({
   analyzeText: geminiMocks.analyzeText,
   answerGroupQuestion: geminiMocks.answerGroupQuestion,
   classifyTopic: geminiMocks.classifyTopic,
   getAnalysisMode: vi.fn(() => 'gemini')
+}));
+
+vi.mock('../src/services/store.js', () => ({
+  addRecord: storeMocks.addRecord
 }));
 
 function textEvent(overrides: Record<string, unknown> = {}) {
@@ -66,6 +74,7 @@ async function loadApp(options: { qaEnabled?: boolean; archiveAiMode?: string } 
     topicSummary: '測試主題摘要',
     topicConfidence: 0.9
   });
+  storeMocks.addRecord.mockResolvedValue(undefined);
   vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
 
   const { createApp } = await import('../src/app.js');
@@ -77,6 +86,7 @@ describe('LINE webhook Gemini QA', () => {
     geminiMocks.analyzeText.mockReset();
     geminiMocks.answerGroupQuestion.mockReset();
     geminiMocks.classifyTopic.mockReset();
+    storeMocks.addRecord.mockReset();
     vi.unstubAllGlobals();
   });
 
@@ -129,6 +139,25 @@ describe('LINE webhook Gemini QA', () => {
       replyToken: 'reply-token',
       messages: [{ type: 'text', text: '這是 Gemini 回答' }]
     });
+  });
+
+  it('answers a mention before archiving that mention as a new record', async () => {
+    const app = await loadApp();
+    const callOrder: string[] = [];
+    geminiMocks.answerGroupQuestion.mockImplementation(async () => {
+      callOrder.push('answer');
+      return '這是 Gemini 回答';
+    });
+    storeMocks.addRecord.mockImplementation(async () => {
+      callOrder.push('store');
+    });
+
+    await request(app)
+      .post('/webhook/line')
+      .send({ events: [mentionEvent()] })
+      .expect(200);
+
+    expect(callOrder).toEqual(['answer', 'store']);
   });
 
   it('does not reply when a mentioned event has no reply token', async () => {

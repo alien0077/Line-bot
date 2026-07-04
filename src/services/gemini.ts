@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { config } from '../config.js';
 import type { AnalysisResult, ArchiveRecord, ArchiveRecordView, MessageCategory, TopicResult } from '../types.js';
 import { listRecordViews } from './store.js';
+import { startOfToday } from '../utils/dates.js';
 
 const categories: MessageCategory[] = ['公告', '待辦', '問題', '檔案', '圖片', '影片', '音訊', '閒聊', '其他'];
 const maxLineReplyLength = 1500;
@@ -522,10 +523,25 @@ function scoreRecord(record: ArchiveRecordView, keywords: string[]): number {
   return keywords.reduce((score, keyword) => score + (haystack.includes(keyword) ? 1 : 0), 0);
 }
 
+function isLikelyBotCommandRecord(record: ArchiveRecordView): boolean {
+  return record.messageType === 'text' && /^@\S+/.test(record.content.trim());
+}
+
+function shouldPreferTodayContext(question: string): boolean {
+  return /今天|今日/.test(question) && /摘要|整理|總結|重點|待處理|待辦|主題|幾個|哪些|聊天|紀錄|內容/.test(question);
+}
+
 function selectContextRecords(records: ArchiveRecordView[], groupId: string, question: string): ArchiveRecordView[] {
   const groupRecords = records
-    .filter((record) => record.groupId === groupId)
+    .filter((record) => record.groupId === groupId && !isLikelyBotCommandRecord(record))
     .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+  const todayRecords = shouldPreferTodayContext(question)
+    ? groupRecords.filter((record) => Date.parse(record.timestamp) >= startOfToday())
+    : [];
+  if (todayRecords.length) {
+    return todayRecords.slice(0, Math.max(0, config.LINE_BOT_QA_CONTEXT_LIMIT));
+  }
+
   const keywords = extractKeywords(question);
   const scored = groupRecords
     .map((record) => ({ record, score: scoreRecord(record, keywords) }))
@@ -543,9 +559,21 @@ function formatContext(records: ArchiveRecordView[]): string {
     .map((record, index) => {
       const content = record.content || record.driveFileName || record.messageType;
       const summary = record.aiSummary ? `；摘要：${record.aiSummary}` : '';
-      return `${index + 1}. ${record.timestamp} [${record.category}/${record.messageType}] ${content}${summary}`;
+      const topic = record.topicTitle ? `；主題：${record.topicTitle}` : '';
+      return `${index + 1}. ${record.timestamp} [${record.category}/${record.messageType}] ${content}${topic}${summary}`;
     })
     .join('\n');
+}
+
+function noGroupContextReply(question: string): string {
+  if (shouldPreferTodayContext(question)) {
+    return [
+      '我目前沒有在 Google Sheets 讀到今天這個群組可供摘要的聊天文字或歸檔索引，所以無法整理今日重點、待處理事項或提醒。',
+      'Google Drive 主要保存圖片與檔案本體；我回答群組摘要時會讀 Sheets 的 Records。若群組明明有聊天，請檢查 LINE webhook 是否有收到事件、Sheets 是否有成功寫入，以及群組 ID 是否一致。'
+    ].join('\n');
+  }
+
+  return '我目前沒有在 Google Sheets 讀到這個群組可供分析的聊天文字或歸檔索引，所以還無法根據群組內容回答。';
 }
 
 function trimLineReply(text: string): string {
@@ -598,10 +626,16 @@ export async function answerGroupQuestion(question: string, groupId: string): Pr
 
     const records = await listRecordViews();
     const contextRecords = selectContextRecords(records, groupId, trimmedQuestion);
+    if (!contextRecords.length) {
+      return noGroupContextReply(trimmedQuestion);
+    }
+
     const context = formatContext(contextRecords);
     const prompt = [
       '你是 LINE 群組中的助理。請使用繁體中文回答。',
       '回答時優先根據「同群組歸檔紀錄」；如果紀錄不足，請明確說明「群組紀錄裡沒有足夠資訊」，再用一般知識補充。',
+      '不要把使用者這次 @bot 的提問或歷史 @bot 指令當成群組內容、主題或待辦。',
+      '不要承諾或建議啟用尚未實作的功能，例如聊天摘要提醒、設定指令或排程提醒。',
       '不要編造群組紀錄中不存在的事實。回答保持精簡、可直接貼在 LINE 群組中。',
       '',
       `使用者問題：${trimmedQuestion}`,

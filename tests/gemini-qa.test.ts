@@ -88,6 +88,66 @@ describe('Gemini group QA routing', () => {
     expect(genaiMocks.generateContent.mock.calls[0][0].contents).toContain('同群組歸檔紀錄');
   });
 
+  it('filters archived bot mention commands out of group QA context', async () => {
+    const { answerGroupQuestion } = await loadGemini();
+    const now = new Date().toISOString();
+    storeMocks.listRecordViews.mockResolvedValue([
+      {
+        timestamp: now,
+        groupId: 'group-1',
+        groupName: '測試群組',
+        messageType: 'text',
+        category: '問題',
+        content: '@AlienLineBot 今天群組聊天內容主題有幾個',
+        aiSummary: '詢問今天群組主題數',
+        driveFileName: '',
+        topicTitle: 'Bot 提問'
+      },
+      {
+        timestamp: now,
+        groupId: 'group-1',
+        groupName: '測試群組',
+        messageType: 'text',
+        category: '公告',
+        content: '明天 10 點開會討論報告',
+        aiSummary: '提醒明天開會討論報告',
+        driveFileName: '',
+        topicTitle: '報告會議'
+      }
+    ]);
+
+    await answerGroupQuestion('今天群組聊天內容主題有幾個', 'group-1');
+
+    const prompt = genaiMocks.generateContent.mock.calls[0][0].contents;
+    expect(prompt).toContain('明天 10 點開會討論報告');
+    expect(prompt).toContain('主題：報告會議');
+    expect(prompt).not.toContain('@AlienLineBot 今天群組聊天內容主題有幾個');
+  });
+
+  it('returns a deterministic no-context reply when only bot commands are archived', async () => {
+    const { answerGroupQuestion } = await loadGemini();
+    storeMocks.listRecordViews.mockResolvedValue([
+      {
+        timestamp: new Date().toISOString(),
+        groupId: 'group-1',
+        groupName: '測試群組',
+        messageType: 'text',
+        category: '問題',
+        content: '@AlienLineBot 摘要今天群組聊天內容',
+        aiSummary: '要求摘要聊天內容',
+        driveFileName: '',
+        topicTitle: 'Bot 提問'
+      }
+    ]);
+
+    const answer = await answerGroupQuestion('摘要今天群組聊天內容，有沒有待處理事項', 'group-1');
+
+    expect(answer).toContain('沒有在 Google Sheets 讀到今天這個群組可供摘要的聊天文字或歸檔索引');
+    expect(answer).toContain('Google Drive 主要保存圖片與檔案本體');
+    expect(answer).toContain('LINE webhook');
+    expect(genaiMocks.generateContent).not.toHaveBeenCalled();
+  });
+
   it('returns a clear quota message instead of throwing when Gemini quota is exhausted', async () => {
     const { answerGroupQuestion } = await loadGemini();
     const quotaError = Object.assign(new Error('RESOURCE_EXHAUSTED: free_tier_requests quota exceeded'), {
