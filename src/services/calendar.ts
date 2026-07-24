@@ -70,8 +70,7 @@ export function buildGoogleCalendarUrl(event: ParsedCalendarEvent): string {
   const params = new URLSearchParams({
     action: 'TEMPLATE',
     text: event.title,
-    dates: `${toCalendarDate(event.startTime)}Z/${toCalendarDate(event.endTime)}Z`,
-    ctz: 'Asia/Taipei'
+    dates: `${toCalendarDate(event.startTime)}/${toCalendarDate(event.endTime)}`
   });
   if (event.location) params.set('location', event.location);
   if (event.description) params.set('details', event.description);
