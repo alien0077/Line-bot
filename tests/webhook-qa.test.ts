@@ -9,7 +9,8 @@ const geminiMocks = vi.hoisted(() => ({
 }));
 
 const storeMocks = vi.hoisted(() => ({
-  addRecord: vi.fn()
+  addRecord: vi.fn(),
+  findRecordByMessageId: vi.fn()
 }));
 
 vi.mock('../src/services/gemini.js', () => ({
@@ -21,7 +22,8 @@ vi.mock('../src/services/gemini.js', () => ({
 }));
 
 vi.mock('../src/services/store.js', () => ({
-  addRecord: storeMocks.addRecord
+  addRecord: storeMocks.addRecord,
+  findRecordByMessageId: storeMocks.findRecordByMessageId
 }));
 
 function textEvent(overrides: Record<string, unknown> = {}) {
@@ -57,6 +59,21 @@ function mentionEvent(overrides: Record<string, unknown> = {}) {
   });
 }
 
+function replyMentionEvent(overrides: Record<string, unknown> = {}) {
+  return textEvent({
+    message: {
+      id: `message-${Math.random()}`,
+      type: 'text',
+      text: '@Line-bot 加入行事曆',
+      quotedMessageId: 'quoted-msg-1',
+      mention: {
+        mentionees: [{ index: 0, length: 9, type: 'user', userId: 'Ubot', isSelf: true }]
+      }
+    },
+    ...overrides
+  });
+}
+
 function waitForAsync(): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, 50));
 }
@@ -81,6 +98,7 @@ async function loadApp(options: { qaEnabled?: boolean; archiveAiMode?: string } 
     topicConfidence: 0.9
   });
   storeMocks.addRecord.mockResolvedValue(undefined);
+  storeMocks.findRecordByMessageId.mockResolvedValue(undefined);
   vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
 
   const { createApp } = await import('../src/app.js');
@@ -94,6 +112,8 @@ describe('LINE webhook Gemini QA', () => {
     geminiMocks.classifyTopic.mockReset();
     geminiMocks.generateGeminiText.mockReset();
     storeMocks.addRecord.mockReset();
+    storeMocks.findRecordByMessageId.mockReset();
+    storeMocks.findRecordByMessageId.mockResolvedValue(undefined);
     vi.unstubAllGlobals();
   });
 
@@ -143,6 +163,69 @@ describe('LINE webhook Gemini QA', () => {
       replyToken: 'reply-token',
       messages: [{ type: 'text', text: '這是 Gemini 回答' }]
     });
+  });
+
+  it('parses quoted message for calendar when replying with @mention', async () => {
+    const app = await loadApp();
+    storeMocks.findRecordByMessageId.mockResolvedValue({
+      messageId: 'quoted-msg-1',
+      content: '明天下午三點在老地方開會',
+      messageType: 'text'
+    } as never);
+    const tomorrow = new Date(Date.now() + 86400000);
+    const startStr = `${tomorrow.toISOString().slice(0, 10)}T15:00:00+08:00`;
+    const endStr = `${tomorrow.toISOString().slice(0, 10)}T16:00:00+08:00`;
+    geminiMocks.generateGeminiText.mockResolvedValue(JSON.stringify({
+      title: '在老地方開會',
+      startTime: startStr,
+      endTime: endStr,
+      location: '老地方',
+      description: '明天下午三點在老地方開會',
+      confidence: 0.9
+    }));
+
+    const response = await request(app)
+      .post('/webhook/line')
+      .send({ events: [replyMentionEvent()] })
+      .expect(200);
+
+    expect(response.body).toEqual({ ok: true, received: 1 });
+    await waitForAsync();
+    expect(storeMocks.findRecordByMessageId).toHaveBeenCalledWith('quoted-msg-1');
+    expect(geminiMocks.answerGroupQuestion).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Q&A when quoted message has no calendar keywords', async () => {
+    const app = await loadApp();
+    storeMocks.findRecordByMessageId.mockResolvedValue({
+      messageId: 'quoted-msg-1',
+      content: '今天天氣真好',
+      messageType: 'text'
+    } as never);
+
+    const response = await request(app)
+      .post('/webhook/line')
+      .send({ events: [replyMentionEvent()] })
+      .expect(200);
+
+    expect(response.body).toEqual({ ok: true, received: 1 });
+    await waitForAsync();
+    expect(storeMocks.findRecordByMessageId).toHaveBeenCalledWith('quoted-msg-1');
+    expect(geminiMocks.answerGroupQuestion).toHaveBeenCalledWith('加入行事曆', 'group-1');
+  });
+
+  it('falls back to Q&A when quoted message is not found in store', async () => {
+    const app = await loadApp();
+
+    const response = await request(app)
+      .post('/webhook/line')
+      .send({ events: [replyMentionEvent()] })
+      .expect(200);
+
+    expect(response.body).toEqual({ ok: true, received: 1 });
+    await waitForAsync();
+    expect(storeMocks.findRecordByMessageId).toHaveBeenCalledWith('quoted-msg-1');
+    expect(geminiMocks.answerGroupQuestion).toHaveBeenCalledWith('加入行事曆', 'group-1');
   });
 
   it('answers a mention before archiving that mention as a new record', async () => {

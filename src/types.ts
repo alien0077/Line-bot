@@ -111,6 +111,7 @@ export interface LineWebhookEvent {
     fileSize?: number;
     packageId?: string;
     stickerId?: string;
+    quotedMessageId?: string;
     mention?: {
       mentionees?: LineMentionee[];
     };

@@ -15,7 +15,7 @@ import {
 } from '../services/line.js';
 import { analyzeText, answerGroupQuestion, classifyTopic } from '../services/gemini.js';
 import { uploadMediaToDrive } from '../services/googleWorkspace.js';
-import { addRecord } from '../services/store.js';
+import { addRecord, findRecordByMessageId } from '../services/store.js';
 import { shortHash } from '../utils/hash.js';
 import { HttpError } from '../utils/httpError.js';
 import {
@@ -26,6 +26,17 @@ import {
 } from '../services/calendar.js';
 
 export const webhookRouter = Router();
+
+const recentRecords = new Map<string, ArchiveRecord>();
+const MAX_CACHED_RECORDS = 200;
+
+function cacheRecord(record: ArchiveRecord): void {
+  if (recentRecords.size >= MAX_CACHED_RECORDS) {
+    const firstKey = recentRecords.keys().next().value;
+    if (firstKey) recentRecords.delete(firstKey);
+  }
+  recentRecords.set(record.messageId, record);
+}
 
 function baseCategory(messageType: ArchiveRecord['messageType']): MessageCategory {
   if (messageType === 'image') return '圖片';
@@ -87,23 +98,38 @@ async function recordFromEvent(event: LineWebhookEvent): Promise<ArchiveRecord |
   };
 }
 
+async function tryCalendarReply(replyToken: string, text: string): Promise<boolean> {
+  try {
+    const calEvent = await parseCalendarEvent(text);
+    if (calEvent && calEvent.confidence > 0.5) {
+      const url = buildGoogleCalendarUrl(calEvent);
+      const flex = buildCalendarFlexMessage(calEvent, url);
+      await replyMessages(replyToken, [flex]);
+      return true;
+    }
+  } catch (error) {
+    console.warn('日曆解析失敗:', error);
+  }
+  return false;
+}
+
 async function handleMentionReply(event: LineWebhookEvent): Promise<void> {
   if (!shouldReplyToMention(event)) return;
   const replyToken = event.replyToken!;
   const text = stripMentionText(event);
   const groupId = getEventGroupId(event);
+  const quotedId = event.message?.quotedMessageId;
 
-  if (config.LINE_CALENDAR_ENABLED && hasCalendarKeywords(text)) {
-    try {
-      const calEvent = await parseCalendarEvent(text);
-      if (calEvent && calEvent.confidence > 0.5) {
-        const url = buildGoogleCalendarUrl(calEvent);
-        const flex = buildCalendarFlexMessage(calEvent, url);
-        await replyMessages(replyToken, [flex]);
-        return;
+  if (config.LINE_CALENDAR_ENABLED) {
+    if (quotedId) {
+      const original = recentRecords.get(quotedId) ?? await findRecordByMessageId(quotedId);
+      if (original?.content && hasCalendarKeywords(original.content)) {
+        if (await tryCalendarReply(replyToken, original.content)) return;
       }
-    } catch (error) {
-      console.warn('日曆解析失敗，退回 Q&A:', error);
+    }
+
+    if (hasCalendarKeywords(text)) {
+      if (await tryCalendarReply(replyToken, text)) return;
     }
   }
 
@@ -125,6 +151,7 @@ async function processEventAsync(event: LineWebhookEvent): Promise<void> {
     const record = await recordFromEvent(event);
     if (!record) return;
 
+    cacheRecord(record);
     await handleMentionReply(event);
     await addRecord(record);
   } catch (error) {

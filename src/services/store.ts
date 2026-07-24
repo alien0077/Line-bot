@@ -55,6 +55,15 @@ export async function addRecord(record: ArchiveRecord): Promise<void> {
   memoryRecords.unshift(record);
 }
 
+export async function findRecordByMessageId(messageId: string): Promise<ArchiveRecord | undefined> {
+  if (!messageId) return undefined;
+  if (hasGoogleWorkspaceConfig()) {
+    const records = await readSheetRecords();
+    return records.find((r) => r.messageId === messageId);
+  }
+  return memoryRecords.find((r) => r.messageId === messageId);
+}
+
 export async function listRecords(): Promise<ArchiveRecord[]> {
   if (hasGoogleWorkspaceConfig()) {
     const records = await readSheetRecords();
