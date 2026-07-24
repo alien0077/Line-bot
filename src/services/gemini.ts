@@ -244,7 +244,7 @@ function clampConfidence(value: unknown): number {
   return Math.max(0, Math.min(1, confidence));
 }
 
-async function generateGeminiText(contents: string, generationConfig: GenerateContentConfig = {}): Promise<string> {
+export async function generateGeminiText(contents: string, generationConfig: GenerateContentConfig = {}): Promise<string> {
   if (!canUseGemini()) {
     throw new Error('Gemini is not configured or daily limit has been reached');
   }

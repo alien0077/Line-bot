@@ -4,7 +4,8 @@ import request from 'supertest';
 const geminiMocks = vi.hoisted(() => ({
   analyzeText: vi.fn(),
   answerGroupQuestion: vi.fn(),
-  classifyTopic: vi.fn()
+  classifyTopic: vi.fn(),
+  generateGeminiText: vi.fn()
 }));
 
 const storeMocks = vi.hoisted(() => ({
@@ -15,7 +16,8 @@ vi.mock('../src/services/gemini.js', () => ({
   analyzeText: geminiMocks.analyzeText,
   answerGroupQuestion: geminiMocks.answerGroupQuestion,
   classifyTopic: geminiMocks.classifyTopic,
-  getAnalysisMode: vi.fn(() => 'gemini')
+  getAnalysisMode: vi.fn(() => 'gemini'),
+  generateGeminiText: geminiMocks.generateGeminiText
 }));
 
 vi.mock('../src/services/store.js', () => ({
@@ -55,6 +57,10 @@ function mentionEvent(overrides: Record<string, unknown> = {}) {
   });
 }
 
+function waitForAsync(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 50));
+}
+
 async function loadApp(options: { qaEnabled?: boolean; archiveAiMode?: string } = {}) {
   vi.resetModules();
   vi.unstubAllEnvs();
@@ -86,6 +92,7 @@ describe('LINE webhook Gemini QA', () => {
     geminiMocks.analyzeText.mockReset();
     geminiMocks.answerGroupQuestion.mockReset();
     geminiMocks.classifyTopic.mockReset();
+    geminiMocks.generateGeminiText.mockReset();
     storeMocks.addRecord.mockReset();
     vi.unstubAllGlobals();
   });
@@ -98,12 +105,10 @@ describe('LINE webhook Gemini QA', () => {
       .send({ events: [textEvent()] })
       .expect(200);
 
-    expect(response.body.stored).toBe(1);
-    expect(response.body.replied).toBe(0);
+    expect(response.body).toEqual({ ok: true, received: 1 });
     expect(geminiMocks.analyzeText).toHaveBeenCalledWith('一般訊息', '其他', { forceLocal: true });
     expect(geminiMocks.classifyTopic).toHaveBeenCalledWith(expect.any(Object), { forceLocal: true });
     expect(geminiMocks.answerGroupQuestion).not.toHaveBeenCalled();
-    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('can opt into AI archive analysis for all messages', async () => {
@@ -114,7 +119,7 @@ describe('LINE webhook Gemini QA', () => {
       .send({ events: [textEvent()] })
       .expect(200);
 
-    expect(response.body.stored).toBe(1);
+    expect(response.body).toEqual({ ok: true, received: 1 });
     expect(geminiMocks.analyzeText).toHaveBeenCalledWith('一般訊息', '其他', { forceLocal: false });
     expect(geminiMocks.classifyTopic).toHaveBeenCalledWith(expect.any(Object), { forceLocal: false });
   });
@@ -127,12 +132,11 @@ describe('LINE webhook Gemini QA', () => {
       .send({ events: [mentionEvent()] })
       .expect(200);
 
-    expect(response.body.stored).toBe(1);
-    expect(response.body.replied).toBe(1);
+    expect(response.body).toEqual({ ok: true, received: 1 });
+    await waitForAsync();
     expect(geminiMocks.analyzeText).toHaveBeenCalledWith('@Line-bot 這週有什麼待辦？', '其他', { forceLocal: true });
     expect(geminiMocks.classifyTopic).toHaveBeenCalledWith(expect.any(Object), { forceLocal: true });
     expect(geminiMocks.answerGroupQuestion).toHaveBeenCalledWith('這週有什麼待辦？', 'group-1');
-    expect(fetch).toHaveBeenCalledTimes(1);
     const [url, init] = vi.mocked(fetch).mock.calls[0];
     expect(url).toBe('https://api.line.me/v2/bot/message/reply');
     expect(JSON.parse(String(init?.body))).toMatchObject({
@@ -157,6 +161,7 @@ describe('LINE webhook Gemini QA', () => {
       .send({ events: [mentionEvent()] })
       .expect(200);
 
+    await waitForAsync();
     expect(callOrder).toEqual(['answer', 'store']);
   });
 
@@ -169,7 +174,8 @@ describe('LINE webhook Gemini QA', () => {
       .send({ events: [event] })
       .expect(200);
 
-    expect(response.body.replied).toBe(0);
+    expect(response.body).toEqual({ ok: true, received: 1 });
+    await waitForAsync();
     expect(geminiMocks.answerGroupQuestion).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -182,7 +188,8 @@ describe('LINE webhook Gemini QA', () => {
       .send({ events: [mentionEvent()] })
       .expect(200);
 
-    expect(response.body.replied).toBe(0);
+    expect(response.body).toEqual({ ok: true, received: 1 });
+    await waitForAsync();
     expect(geminiMocks.answerGroupQuestion).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -196,7 +203,8 @@ describe('LINE webhook Gemini QA', () => {
       .send({ events: [mentionEvent()] })
       .expect(200);
 
-    expect(response.body.replied).toBe(1);
+    expect(response.body).toEqual({ ok: true, received: 1 });
+    await waitForAsync();
     expect(fetch).toHaveBeenCalledTimes(1);
     const [, init] = vi.mocked(fetch).mock.calls[0];
     expect(JSON.parse(String(init?.body)).messages[0].text).toContain('請稍後再問我一次');

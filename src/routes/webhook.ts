@@ -8,6 +8,7 @@ import {
   getEventText,
   isBotMentioned,
   normalizeMessageType,
+  replyMessages,
   replyText,
   stripMentionText,
   verifyLineSignature
@@ -17,6 +18,12 @@ import { uploadMediaToDrive } from '../services/googleWorkspace.js';
 import { addRecord } from '../services/store.js';
 import { shortHash } from '../utils/hash.js';
 import { HttpError } from '../utils/httpError.js';
+import {
+  buildCalendarFlexMessage,
+  buildGoogleCalendarUrl,
+  hasCalendarKeywords,
+  parseCalendarEvent
+} from '../services/calendar.js';
 
 export const webhookRouter = Router();
 
@@ -80,24 +87,48 @@ async function recordFromEvent(event: LineWebhookEvent): Promise<ArchiveRecord |
   };
 }
 
-async function replyToMention(event: LineWebhookEvent): Promise<boolean> {
-  if (!shouldReplyToMention(event)) return false;
-  const replyToken = event.replyToken;
-  if (!replyToken) return false;
+async function handleMentionReply(event: LineWebhookEvent): Promise<void> {
+  if (!shouldReplyToMention(event)) return;
+  const replyToken = event.replyToken!;
+  const text = stripMentionText(event);
+  const groupId = getEventGroupId(event);
+
+  if (config.LINE_CALENDAR_ENABLED && hasCalendarKeywords(text)) {
+    try {
+      const calEvent = await parseCalendarEvent(text);
+      if (calEvent && calEvent.confidence > 0.5) {
+        const url = buildGoogleCalendarUrl(calEvent);
+        const flex = buildCalendarFlexMessage(calEvent, url);
+        await replyMessages(replyToken, [flex]);
+        return;
+      }
+    } catch (error) {
+      console.warn('日曆解析失敗，退回 Q&A:', error);
+    }
+  }
 
   try {
-    const answer = await answerGroupQuestion(stripMentionText(event), getEventGroupId(event));
+    const answer = await answerGroupQuestion(text, groupId);
     await replyText(replyToken, answer);
-    return true;
   } catch (error) {
     console.warn('LINE bot QA failed', error);
     try {
       await replyText(replyToken, 'Gemini 現在有點忙，我暫時沒有拿到答案。請稍後再問我一次。');
-      return true;
     } catch (replyError) {
       console.warn('LINE bot QA fallback reply failed', replyError);
-      return false;
     }
+  }
+}
+
+async function processEventAsync(event: LineWebhookEvent): Promise<void> {
+  try {
+    const record = await recordFromEvent(event);
+    if (!record) return;
+
+    await handleMentionReply(event);
+    await addRecord(record);
+  } catch (error) {
+    console.error('背景事件處理失敗:', error);
   }
 }
 
@@ -111,22 +142,15 @@ webhookRouter.post('/line', async (req, res) => {
 
   const payload = req.body as LineWebhookPayload;
   const events = payload.events ?? [];
-  const stored: string[] = [];
-  let replied = 0;
-
-  for (const event of events) {
-    const record = await recordFromEvent(event);
-    if (!record) continue;
-    if (await replyToMention(event)) replied += 1;
-    await addRecord(record);
-    stored.push(record.id);
-  }
 
   res.json({
     ok: true,
-    received: events.length,
-    stored: stored.length,
-    replied,
-    ids: stored
+    received: events.length
   });
+
+  for (const event of events) {
+    processEventAsync(event).catch((error) => {
+      console.error('背景事件處理失敗:', error);
+    });
+  }
 });

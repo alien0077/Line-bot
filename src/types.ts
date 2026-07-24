@@ -123,3 +123,12 @@ export interface MediaUpload {
   mimeType: string;
   fileName: string;
 }
+
+export interface ParsedCalendarEvent {
+  title: string;
+  startTime: string;
+  endTime: string;
+  location: string;
+  description: string;
+  confidence: number;
+}

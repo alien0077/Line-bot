@@ -44,6 +44,7 @@ const envSchema = z.object({
   NVIDIA_API_KEY: z.string().default(''),
   NVIDIA_MODEL: z.string().default('meta/llama-3.3-70b-instruct'),
   LINE_BOT_QA_ENABLED: envBoolean.default(true),
+  LINE_CALENDAR_ENABLED: envBoolean.default(true),
   LINE_BOT_QA_CONTEXT_LIMIT: z.coerce.number().default(30),
   PUBLIC_RECENT_LIMIT: z.coerce.number().default(10),
   ADMIN_PAGE_SIZE: z.coerce.number().default(100)

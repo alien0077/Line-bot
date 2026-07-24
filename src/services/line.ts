@@ -98,6 +98,15 @@ export async function fetchLineContent(event: LineWebhookEvent): Promise<MediaUp
 }
 
 export async function replyText(replyToken: string, text: string): Promise<void> {
+  await replyMessages(replyToken, [
+    {
+      type: 'text',
+      text: text.slice(0, 5000)
+    }
+  ]);
+}
+
+export async function replyMessages(replyToken: string, messages: object[]): Promise<void> {
   if (!config.LINE_CHANNEL_ACCESS_TOKEN) {
     throw new HttpError(503, '尚未設定 LINE_CHANNEL_ACCESS_TOKEN，無法回覆 LINE 訊息');
   }
@@ -108,15 +117,7 @@ export async function replyText(replyToken: string, text: string): Promise<void>
       Authorization: `Bearer ${config.LINE_CHANNEL_ACCESS_TOKEN}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      replyToken,
-      messages: [
-        {
-          type: 'text',
-          text: text.slice(0, 5000)
-        }
-      ]
-    })
+    body: JSON.stringify({ replyToken, messages })
   });
 
   if (!response.ok) {
